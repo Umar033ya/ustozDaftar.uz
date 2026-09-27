@@ -3,86 +3,140 @@
 import { useState, useEffect } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import StudentPercentageChart from "@/components/StudentPercentageChart";
+import { useAuth } from "@/lib/authContext";
+import { getClasses, getAssessments, getStudents, getResults } from "@/lib/firestoreService";
 
 export default function Statistics() {
+  const { currentUser } = useAuth();
   const [classes, setClasses] = useState([]);
   const [assessments, setAssessments] = useState([]);
   const [selectedClass, setSelectedClass] = useState("");
+  const [selectedClassStats, setSelectedClassStats] = useState(null);
+  const [loadingStats, setLoadingStats] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const classesJson = localStorage.getItem("ustozdaftar_classes");
-    if (classesJson) {
-      setClasses(JSON.parse(classesJson));
+    if (!currentUser) return;
+
+    async function loadData() {
+      try {
+        const [loadedClasses, loadedAssessments] = await Promise.all([
+          getClasses(currentUser.uid),
+          getAssessments(currentUser.uid),
+        ]);
+
+        // Attach results to each assessment for calculation
+        const assessmentsWithResults = await Promise.all(
+          loadedAssessments.map(async (a) => {
+            try {
+              const results = await getResults(currentUser.uid, a.id);
+              return { ...a, results };
+            } catch (e) {
+              return { ...a, results: [] };
+            }
+          })
+        );
+
+        setClasses(loadedClasses);
+        setAssessments(assessmentsWithResults);
+      } catch (err) {
+        console.error("Error loading statistics data:", err);
+      } finally {
+        setLoading(false);
+      }
     }
 
-    const assessmentsJson = localStorage.getItem("ustozdaftar_assessments");
-    if (assessmentsJson) {
-      setAssessments(JSON.parse(assessmentsJson));
-    }
-  }, []);
+    loadData();
+  }, [currentUser]);
 
-  const getClassStatistics = (classId) => {
-    const classAssessments = assessments.filter((a) => a.classId === classId);
-    const totalAssessments = classAssessments.length;
-    
-    if (totalAssessments === 0) {
-      return {
-        totalAssessments: 0,
-        averagePercentage: 0,
-        highPerformers: 0,
-        needsImprovement: 0,
-        classResults: [],
-      };
+  useEffect(() => {
+    if (!selectedClass || !currentUser) {
+      setSelectedClassStats(null);
+      return;
     }
 
-    const allPercentages = classAssessments.flatMap((a) =>
-      a.results.map((r) => r.percentage)
-    );
-    const validPercentages = allPercentages.filter((p) => p > 0);
+    async function computeClassStats() {
+      setLoadingStats(true);
+      try {
+        const classAssessments = assessments.filter((a) => a.classId === selectedClass);
+        const totalAssessments = classAssessments.length;
 
-    const averagePercentage = validPercentages.length > 0
-      ? (validPercentages.reduce((a, b) => a + b, 0) / validPercentages.length).toFixed(1)
-      : 0;
+        if (totalAssessments === 0) {
+          setSelectedClassStats({
+            totalAssessments: 0,
+            averagePercentage: 0,
+            highPerformers: 0,
+            needsImprovement: 0,
+            classResults: [],
+          });
+          return;
+        }
 
-    const highPerformers = validPercentages.filter((p) => p >= 80).length;
-    const needsImprovement = validPercentages.filter((p) => p < 60).length;
+        const allPercentages = classAssessments.flatMap((a) =>
+          (a.results || []).map((r) => r.percentage || 0)
+        );
+        const validPercentages = allPercentages.filter((p) => p > 0);
 
-    // Build aggregated per-student average for selected class
-    const foundClass = classes.find((c) => c.id === classId);
-    const classResults = (foundClass?.students || []).map((student) => {
-      const studentScores = classAssessments.flatMap((a) =>
-        a.results.filter((r) => r.studentId === student.id).map((r) => r.percentage)
-      ).filter((p) => p > 0);
+        const averagePercentage = validPercentages.length > 0
+          ? (validPercentages.reduce((a, b) => a + b, 0) / validPercentages.length).toFixed(1)
+          : 0;
 
-      const avgPct = studentScores.length > 0
-        ? studentScores.reduce((a, b) => a + b, 0) / studentScores.length
-        : 0;
+        const highPerformers = validPercentages.filter((p) => p >= 80).length;
+        const needsImprovement = validPercentages.filter((p) => p < 60).length;
 
-      return {
-        studentName: student.name,
-        percentage: avgPct,
-        total: studentScores.length,
-      };
-    });
+        // Fetch students for selected class to compute per-student averages
+        const classStudents = await getStudents(currentUser.uid, selectedClass);
 
-    return {
-      totalAssessments,
-      averagePercentage,
-      highPerformers,
-      needsImprovement,
-      classResults,
-    };
-  };
+        const classResults = classStudents.map((student) => {
+          const studentScores = classAssessments
+            .flatMap((a) =>
+              (a.results || []).filter((r) => r.studentId === student.id).map((r) => r.percentage || 0)
+            )
+            .filter((p) => p > 0);
+
+          const avgPct = studentScores.length > 0
+            ? studentScores.reduce((a, b) => a + b, 0) / studentScores.length
+            : 0;
+
+          return {
+            studentName: student.name,
+            percentage: avgPct,
+            total: studentScores.length,
+          };
+        });
+
+        setSelectedClassStats({
+          totalAssessments,
+          averagePercentage,
+          highPerformers,
+          needsImprovement,
+          classResults,
+        });
+      } catch (err) {
+        console.error("Error computing class statistics:", err);
+      } finally {
+        setLoadingStats(false);
+      }
+    }
+
+    computeClassStats();
+  }, [selectedClass, assessments, currentUser]);
 
   const overallStats = {
     totalClasses: classes.length,
     totalAssessments: assessments.length,
-    totalStudents: classes.reduce((sum, cls) => sum + (cls.students?.length || 0), 0),
+    totalStudents: classes.reduce((sum, cls) => sum + (cls.studentCount || 0), 0),
     bsbCount: assessments.filter((a) => a.type === "BSB").length,
     chsbCount: assessments.filter((a) => a.type === "ChSB").length,
   };
 
-  const selectedClassStats = selectedClass ? getClassStatistics(selectedClass) : null;
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="text-center text-gray-500 py-12">Yuklanmoqda...</div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -169,7 +223,9 @@ export default function Statistics() {
           </select>
         </div>
 
-        {selectedClassStats && (
+        {loadingStats ? (
+          <div className="text-gray-500 text-sm mt-4">Statistika hisoblanmoqda...</div>
+        ) : selectedClassStats && (
           <div className="mt-6">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
               <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
@@ -233,9 +289,9 @@ export default function Statistics() {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {assessments.slice(0, 10).map((assessment) => {
-                  const validResults = assessment.results.filter((r) => r.percentage > 0 || r.total > 0);
+                  const validResults = (assessment.results || []).filter((r) => r.percentage > 0 || r.total > 0);
                   const avgPercentage = validResults.length > 0
-                    ? (validResults.reduce((sum, r) => sum + r.percentage, 0) / validResults.length).toFixed(1)
+                    ? (validResults.reduce((sum, r) => sum + (r.percentage || 0), 0) / validResults.length).toFixed(1)
                     : 0;
                   return (
                     <tr key={assessment.id} className="hover:bg-gray-50 transition-colors">

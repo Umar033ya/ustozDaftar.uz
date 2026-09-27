@@ -1,40 +1,130 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
 import StudentPercentageChart from "@/components/StudentPercentageChart";
 import { exportChSBToExcel } from "@/lib/excelExport";
+import { useAuth } from "@/lib/authContext";
+import {
+  getAssessmentById,
+  getResults,
+  getStudents,
+  reconcileResultsWithStudents,
+  updateResult,
+  getUserProfile,
+} from "@/lib/firestoreService";
 
 export default function ChSBResult() {
   const router = useRouter();
   const params = useParams();
   const assessmentId = params.id;
+  const { currentUser } = useAuth();
   
   const [assessment, setAssessment] = useState(null);
   const [results, setResults] = useState([]);
   const [saving, setSaving] = useState(false);
   const [schoolName, setSchoolName] = useState("");
+  const [loading, setLoading] = useState(true);
+  const saveTimers = useRef({});
+  const pendingSaves = useRef({});
 
   useEffect(() => {
-    const schoolNameJson = localStorage.getItem("ustozdaftar_school_name");
-    if (schoolNameJson) {
-      setSchoolName(schoolNameJson);
-    }
+    if (!currentUser || !assessmentId) return;
 
-    const assessmentsJson = localStorage.getItem("ustozdaftar_assessments");
-    if (assessmentsJson) {
-      const assessments = JSON.parse(assessmentsJson);
-      const foundAssessment = assessments.find((a) => a.id === assessmentId);
-      if (foundAssessment) {
-        setAssessment(foundAssessment);
-        setResults(foundAssessment.results || []);
-      } else {
-        router.push("/dashboard/chsb");
+    async function loadData() {
+      try {
+        const [loadedAssessment, profile, loadedResults] = await Promise.all([
+          getAssessmentById(currentUser.uid, assessmentId),
+          getUserProfile(currentUser.uid),
+          getResults(currentUser.uid, assessmentId),
+        ]);
+
+        if (loadedAssessment) {
+          setAssessment(loadedAssessment);
+          setSchoolName(profile?.schoolName || "");
+
+          // One row per student of the class, no more, no less
+          let students = [];
+          if (loadedAssessment.classId) {
+            students = await getStudents(currentUser.uid, loadedAssessment.classId);
+          }
+          const reconciled = await reconcileResultsWithStudents(
+            currentUser.uid,
+            loadedAssessment,
+            students,
+            loadedResults
+          );
+          setResults(reconciled);
+        } else {
+          router.push("/dashboard/chsb");
+        }
+      } catch (err) {
+        console.error("Error loading ChSB assessment:", err);
+      } finally {
+        setLoading(false);
       }
     }
-  }, [assessmentId, router]);
+
+    loadData();
+  }, [currentUser, assessmentId, router]);
+
+  const flushSave = useCallback(
+    async (studentId) => {
+      const pending = pendingSaves.current[studentId];
+      if (!pending) return;
+      delete pendingSaves.current[studentId];
+      try {
+        await updateResult(currentUser.uid, assessmentId, studentId, pending);
+      } catch (e) {
+        console.error("Error updating ChSB result:", e);
+      } finally {
+        setSaving(false);
+      }
+    },
+    [currentUser, assessmentId]
+  );
+
+  const debouncedSave = useCallback(
+    (studentId, updatedData) => {
+      pendingSaves.current[studentId] = updatedData;
+      if (saveTimers.current[studentId]) {
+        clearTimeout(saveTimers.current[studentId]);
+      }
+      setSaving(true);
+      saveTimers.current[studentId] = setTimeout(() => {
+        delete saveTimers.current[studentId];
+        flushSave(studentId);
+      }, 600);
+    },
+    [flushSave]
+  );
+
+  // Never lose the last edits: flush pending scores on navigation, tab switch or reload
+  useEffect(() => {
+    const flushAll = () => {
+      Object.keys(saveTimers.current).forEach((studentId) => {
+        clearTimeout(saveTimers.current[studentId]);
+        delete saveTimers.current[studentId];
+      });
+      Object.keys(pendingSaves.current).forEach((studentId) => {
+        const data = pendingSaves.current[studentId];
+        delete pendingSaves.current[studentId];
+        updateResult(currentUser.uid, assessmentId, studentId, data).catch((e) =>
+          console.error("Error updating ChSB result:", e)
+        );
+      });
+    };
+
+    window.addEventListener("pagehide", flushAll);
+    document.addEventListener("visibilitychange", flushAll);
+    return () => {
+      window.removeEventListener("pagehide", flushAll);
+      document.removeEventListener("visibilitychange", flushAll);
+      flushAll();
+    };
+  }, [currentUser, assessmentId]);
 
   const handleScoreChange = (studentIndex, value) => {
     const newResults = [...results];
@@ -45,26 +135,18 @@ export default function ChSBResult() {
       return;
     }
 
-    newResults[studentIndex].total = score;
+    const updatedResult = { ...newResults[studentIndex] };
+    updatedResult.total = score;
     const percentage = score === "" || isNaN(score) ? 0 : (score / assessment.maxScore) * 100;
-    newResults[studentIndex].percentage = percentage;
+    updatedResult.percentage = percentage;
     
+    newResults[studentIndex] = updatedResult;
     setResults(newResults);
-    saveResults(newResults);
-  };
 
-  const saveResults = (newResults) => {
-    setSaving(true);
-    const assessmentsJson = localStorage.getItem("ustozdaftar_assessments");
-    if (assessmentsJson) {
-      const assessments = JSON.parse(assessmentsJson);
-      const updatedAssessments = assessments.map((a) =>
-        a.id === assessmentId ? { ...a, results: newResults } : a
-      );
-      localStorage.setItem("ustozdaftar_assessments", JSON.stringify(updatedAssessments));
-      setAssessment((prev) => (prev ? { ...prev, results: newResults } : null));
-    }
-    setTimeout(() => setSaving(false), 400);
+    debouncedSave(updatedResult.id || updatedResult.studentId, {
+      total: updatedResult.total,
+      percentage: updatedResult.percentage,
+    });
   };
 
   const handleExport = () => {
@@ -97,6 +179,14 @@ export default function ChSBResult() {
   };
 
   const stats = calculateStatistics();
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="text-center text-gray-500 py-12">Yuklanmoqda...</div>
+      </DashboardLayout>
+    );
+  }
 
   if (!assessment) {
     return null;
@@ -223,7 +313,7 @@ export default function ChSBResult() {
                 </td>
               </tr>
 
-              {/* Dynamic Student Rows (EXACTLY N students, no blank rows!) */}
+              {/* Dynamic Student Rows */}
               {results.map((result, studentIndex) => (
                 <tr key={result.studentId} className="hover:bg-gray-50/80 transition-colors">
                   <td className="px-3 py-2 border border-gray-300 text-center font-medium text-gray-700">

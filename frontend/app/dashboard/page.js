@@ -3,46 +3,49 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useAuth } from "@/lib/authContext";
+import { getClasses, getAssessments } from "@/lib/firestoreService";
 
 export default function Dashboard() {
-  const [user, setUser] = useState(null);
+  const { currentUser, userProfile } = useAuth();
   const [classes, setClasses] = useState([]);
   const [totalStudents, setTotalStudents] = useState(0);
   const [bsbCount, setBsbCount] = useState(0);
   const [chsbCount, setChsbCount] = useState(0);
 
   useEffect(() => {
-    const userJson = localStorage.getItem("ustozdaftar_user");
-    if (userJson) {
-      setUser(JSON.parse(userJson));
+    if (!currentUser) return;
+
+    async function loadDashboardData() {
+      try {
+        const [loadedClasses, loadedAssessments] = await Promise.all([
+          getClasses(currentUser.uid),
+          getAssessments(currentUser.uid),
+        ]);
+
+        setClasses(loadedClasses);
+        const total = loadedClasses.reduce((sum, cls) => sum + (cls.studentCount || 0), 0);
+        setTotalStudents(total);
+
+        setBsbCount(loadedAssessments.filter((a) => a.type === "BSB").length);
+        setChsbCount(loadedAssessments.filter((a) => a.type === "ChSB").length);
+      } catch (e) {
+        console.error("Error loading dashboard data:", e);
+      }
     }
 
-    const classesJson = localStorage.getItem("ustozdaftar_classes");
-    if (classesJson) {
-      const loadedClasses = JSON.parse(classesJson);
-      setClasses(loadedClasses);
-      const total = loadedClasses.reduce((sum, cls) => sum + (cls.students?.length || 0), 0);
-      setTotalStudents(total);
-    }
+    loadDashboardData();
+  }, [currentUser]);
 
-    const assessmentsJson = localStorage.getItem("ustozdaftar_assessments");
-    if (assessmentsJson) {
-      const assessments = JSON.parse(assessmentsJson);
-      setBsbCount(assessments.filter((a) => a.type === "BSB").length);
-      setChsbCount(assessments.filter((a) => a.type === "ChSB").length);
-    }
-  }, []);
-
-  if (!user) {
-    return null;
-  }
+  const firstName = userProfile?.firstName || "";
+  const lastName = userProfile?.lastName || "";
 
   return (
     <DashboardLayout>
       {/* Welcome Header */}
       <div className="mb-6 sm:mb-8">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-          Xush kelibsiz, {user.firstName} {user.lastName}!
+          Xush kelibsiz{firstName ? `, ${firstName} ${lastName}` : ""}!
         </h1>
         <p className="text-gray-600 mt-1 text-sm sm:text-base">
           UstozDaftar.uz boshqaruv paneliga xush kelibsiz
@@ -141,7 +144,7 @@ export default function Dashboard() {
                 <h3 className="text-base sm:text-lg font-semibold text-gray-900">{cls.name}</h3>
                 <p className="text-gray-600 text-xs sm:text-sm mt-1">{cls.academicYear}</p>
                 <p className="text-xs text-gray-500 mt-3 font-medium">
-                  {cls.students?.length || 0} o'quvchi
+                  {cls.studentCount || 0} o'quvchi
                 </p>
               </Link>
             ))}

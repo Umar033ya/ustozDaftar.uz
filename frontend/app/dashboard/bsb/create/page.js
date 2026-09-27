@@ -4,9 +4,12 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useAuth } from "@/lib/authContext";
+import { getClasses, getStudents, createAssessment } from "@/lib/firestoreService";
 
 export default function CreateBSB() {
   const router = useRouter();
+  const { currentUser } = useAuth();
   const [classes, setClasses] = useState([]);
   const [formData, setFormData] = useState({
     classId: "",
@@ -17,13 +20,19 @@ export default function CreateBSB() {
   });
   const [tasks, setTasks] = useState([]);
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    const classesJson = localStorage.getItem("ustozdaftar_classes");
-    if (classesJson) {
-      setClasses(JSON.parse(classesJson));
-    }
-  }, []);
+    if (!currentUser) return;
+
+    getClasses(currentUser.uid)
+      .then((loadedClasses) => {
+        setClasses(loadedClasses);
+      })
+      .catch((err) => {
+        console.error("Error loading classes:", err);
+      });
+  }, [currentUser]);
 
   useEffect(() => {
     const num = Math.min(20, Math.max(1, parseInt(formData.numberOfTasks) || 1));
@@ -35,6 +44,7 @@ export default function CreateBSB() {
       });
     }
     setTasks(newTasks);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.numberOfTasks]);
 
   const handleChange = (e) => {
@@ -52,7 +62,7 @@ export default function CreateBSB() {
     );
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
 
@@ -62,40 +72,42 @@ export default function CreateBSB() {
     }
 
     const selectedClass = classes.find((cls) => cls.id === formData.classId);
-    if (!selectedClass || !selectedClass.students || selectedClass.students.length === 0) {
-      setError("Tanlangan sinfda o'quvchilar yo'q. Avval o'quvchilarni sinfga qo'shing.");
+    if (!selectedClass) {
+      setError("Sinf topilmadi");
       return;
     }
 
-    const maxTotal = tasks.reduce((sum, task) => sum + task.maxScore, 0);
+    setSubmitting(true);
 
-    const assessment = {
-      id: Date.now().toString(),
-      type: "BSB",
-      classId: formData.classId,
-      className: selectedClass.name,
-      academicYear: selectedClass.academicYear,
-      subject: formData.subject.trim(),
-      number: formData.bsbNumber,
-      date: formData.date,
-      tasks: tasks,
-      maxTotal: maxTotal,
-      results: selectedClass.students.map((student) => ({
-        studentId: student.id,
-        studentName: student.name,
-        scores: tasks.map(() => ""),
-        total: 0,
-        percentage: 0,
-      })),
-      createdAt: new Date().toISOString(),
-    };
+    try {
+      const students = await getStudents(currentUser.uid, formData.classId);
+      if (!students || students.length === 0) {
+        setError("Tanlangan sinfda o'quvchilar yo'q. Avval o'quvchilarni sinfga qo'shing.");
+        setSubmitting(false);
+        return;
+      }
 
-    const assessmentsJson = localStorage.getItem("ustozdaftar_assessments");
-    const assessments = assessmentsJson ? JSON.parse(assessmentsJson) : [];
-    assessments.push(assessment);
-    localStorage.setItem("ustozdaftar_assessments", JSON.stringify(assessments));
+      const maxTotal = tasks.reduce((sum, task) => sum + task.maxScore, 0);
 
-    router.push(`/dashboard/bsb/${assessment.id}`);
+      const assessmentData = {
+        type: "BSB",
+        classId: formData.classId,
+        className: selectedClass.name,
+        academicYear: selectedClass.academicYear,
+        subject: formData.subject.trim(),
+        number: formData.bsbNumber,
+        date: formData.date,
+        tasks: tasks,
+        maxTotal: maxTotal,
+      };
+
+      const newId = await createAssessment(currentUser.uid, assessmentData, students);
+      router.push(`/dashboard/bsb/${newId}`);
+    } catch (err) {
+      console.error("Error creating BSB assessment:", err);
+      setError("BSB yaratishda xatolik yuz berdi");
+      setSubmitting(false);
+    }
   };
 
   const maxTotal = tasks.reduce((sum, task) => sum + task.maxScore, 0);
@@ -136,7 +148,7 @@ export default function CreateBSB() {
                 <option value="">Sinfni tanlang</option>
                 {classes.map((cls) => (
                   <option key={cls.id} value={cls.id}>
-                    {cls.name} ({cls.academicYear}) - {cls.students?.length || 0} o'quvchi
+                    {cls.name} ({cls.academicYear}) - {cls.studentCount || 0} o'quvchi
                   </option>
                 ))}
               </select>
@@ -241,9 +253,10 @@ export default function CreateBSB() {
           <div className="flex flex-col sm:flex-row gap-3">
             <button
               type="submit"
-              className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 font-medium text-sm sm:text-base transition-colors"
+              disabled={submitting}
+              className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 font-medium text-sm sm:text-base transition-colors disabled:bg-gray-400"
             >
-              Yaratish va ballarni kiritish
+              {submitting ? "Yaratilmoqda..." : "Yaratish va ballarni kiritish"}
             </button>
             <Link
               href="/dashboard/bsb"

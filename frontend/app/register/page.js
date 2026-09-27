@@ -4,17 +4,22 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Logo from "@/components/Logo";
+import { useAuth } from "@/lib/authContext";
 
 export default function Register() {
   const router = useRouter();
+  const { register } = useAuth();
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
-    emailOrPhone: "",
+    email: "",
     password: "",
     confirmPassword: "",
   });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const handleChange = (e) => {
     setFormData({
@@ -23,11 +28,17 @@ export default function Register() {
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
 
-    if (!formData.firstName.trim() || !formData.lastName.trim() || !formData.emailOrPhone.trim() || !formData.password || !formData.confirmPassword) {
+    if (
+      !formData.firstName.trim() ||
+      !formData.lastName.trim() ||
+      !formData.email.trim() ||
+      !formData.password ||
+      !formData.confirmPassword
+    ) {
       setError("Barcha maydonlarni to'ldiring");
       return;
     }
@@ -43,42 +54,39 @@ export default function Register() {
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const phoneRegex = /^\+?[0-9]{9,15}$/;
-    
-    if (!emailRegex.test(formData.emailOrPhone.trim()) && !phoneRegex.test(formData.emailOrPhone.trim())) {
-      setError("To'g'ri email yoki telefon raqam kiriting");
+    if (!emailRegex.test(formData.email.trim())) {
+      setError("To'g'ri email manzil kiriting");
       return;
     }
 
-    // Get existing users
-    const usersJson = localStorage.getItem("ustozdaftar_users");
-    const users = usersJson ? JSON.parse(usersJson) : [];
+    setSubmitting(true);
 
-    const exists = users.some(
-      (u) => u.emailOrPhone.toLowerCase() === formData.emailOrPhone.trim().toLowerCase()
-    );
-    if (exists) {
-      setError("Ushbu email yoki telefon bilan allaqachon ro'yxatdan o'tilgan");
-      return;
+    try {
+      await register(
+        formData.email.trim(),
+        formData.password,
+        formData.firstName.trim(),
+        formData.lastName.trim()
+      );
+      router.push("/dashboard");
+    } catch (err) {
+      console.error("Register error:", err);
+      if (err.code === "auth/email-already-in-use") {
+        setError("Ushbu email bilan allaqachon ro'yxatdan o'tilgan");
+      } else if (err.code === "auth/invalid-email") {
+        setError("Noto'g'ri email manzil kiritildi");
+      } else if (err.code === "auth/weak-password") {
+        setError("Parol juda zaif. Kamida 6 ta belgi kiritishingiz kerak.");
+      } else if (err.message === "PROFILE_CREATE_FAILED") {
+        setError(
+          "Hisob yaratildi, lekin profil yozilmadi. Firebase'da Firestore Security Rules joriy etilganini tekshirib, qayta urinib ko'ring."
+        );
+      } else {
+        setError("Ro'yxatdan o'tishda xatolik yuz berdi. Qayta urinib ko'ring.");
+      }
+    } finally {
+      setSubmitting(false);
     }
-
-    const newUser = {
-      id: Date.now().toString(),
-      firstName: formData.firstName.trim(),
-      lastName: formData.lastName.trim(),
-      emailOrPhone: formData.emailOrPhone.trim(),
-      password: formData.password,
-      createdAt: new Date().toISOString(),
-    };
-
-    users.push(newUser);
-    localStorage.setItem("ustozdaftar_users", JSON.stringify(users));
-
-    // Set active session user (without password)
-    const { password, ...userSession } = newUser;
-    localStorage.setItem("ustozdaftar_user", JSON.stringify(userSession));
-
-    router.push("/dashboard");
   };
 
   return (
@@ -154,18 +162,18 @@ export default function Register() {
               </div>
 
               <div>
-                <label htmlFor="emailOrPhone" className="block text-sm font-medium text-gray-700">
-                  Telefon yoki email
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                  Email
                 </label>
                 <input
-                  id="emailOrPhone"
-                  name="emailOrPhone"
-                  type="text"
+                  id="email"
+                  name="email"
+                  type="email"
                   required
-                  value={formData.emailOrPhone}
+                  value={formData.email}
                   onChange={handleChange}
                   className="mt-1 block w-full px-3.5 py-2.5 border border-gray-300 rounded-lg shadow-xs text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="email@example.com yoki +998901234567"
+                  placeholder="email@example.com"
                 />
               </div>
 
@@ -173,41 +181,84 @@ export default function Register() {
                 <label htmlFor="password" className="block text-sm font-medium text-gray-700">
                   Parol
                 </label>
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  required
-                  value={formData.password}
-                  onChange={handleChange}
-                  className="mt-1 block w-full px-3.5 py-2.5 border border-gray-300 rounded-lg shadow-xs text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Kamida 6 belgi"
-                />
+                <div className="relative mt-1">
+                  <input
+                    id="password"
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    required
+                    value={formData.password}
+                    onChange={handleChange}
+                    className="block w-full px-3.5 py-2.5 pr-11 border border-gray-300 rounded-lg shadow-xs text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Kamida 6 belgi"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 transition-colors"
+                    title={showPassword ? "Parolni yashirish" : "Parolni ko'rsatish"}
+                    aria-label={showPassword ? "Parolni yashirish" : "Parolni ko'rsatish"}
+                    aria-pressed={showPassword}
+                  >
+                    {showPassword ? (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18M10.58 10.58a2 2 0 002.83 2.83M9.9 4.24A9.12 9.12 0 0112 4c7 0 10 8 10 8a17.9 17.9 0 01-2.16 3.19M6.61 6.61A17.9 17.9 0 002 12s3 8 10 8a9.12 9.12 0 004.1-.9" />
+                      </svg>
+                    ) : (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2 12s3-8 10-8 10 8 10 8-3 8-10 8-10-8-10-8z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
               </div>
 
               <div>
                 <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
                   Parolni tasdiqlash
                 </label>
-                <input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type="password"
-                  required
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  className="mt-1 block w-full px-3.5 py-2.5 border border-gray-300 rounded-lg shadow-xs text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Parolni qayta kiriting"
-                />
+                <div className="relative mt-1">
+                  <input
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    type={showConfirmPassword ? "text" : "password"}
+                    required
+                    value={formData.confirmPassword}
+                    onChange={handleChange}
+                    className="block w-full px-3.5 py-2.5 pr-11 border border-gray-300 rounded-lg shadow-xs text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Parolni qayta kiriting"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((v) => !v)}
+                    className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 transition-colors"
+                    title={showConfirmPassword ? "Parolni yashirish" : "Parolni ko'rsatish"}
+                    aria-label={showConfirmPassword ? "Parolni yashirish" : "Parolni ko'rsatish"}
+                    aria-pressed={showConfirmPassword}
+                  >
+                    {showConfirmPassword ? (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18M10.58 10.58a2 2 0 002.83 2.83M9.9 4.24A9.12 9.12 0 0112 4c7 0 10 8 10 8a17.9 17.9 0 01-2.16 3.19M6.61 6.61A17.9 17.9 0 002 12s3 8 10 8a9.12 9.12 0 004.1-.9" />
+                      </svg>
+                    ) : (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2 12s3-8 10-8 10 8 10 8-3 8-10 8-10-8-10-8z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
 
             <div>
               <button
                 type="submit"
-                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-xs text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                disabled={submitting}
+                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-xs text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400"
               >
-                Ro'yxatdan o'tish
+                {submitting ? "Ro'yxatdan o'tilmoqda..." : "Ro'yxatdan o'tish"}
               </button>
             </div>
 

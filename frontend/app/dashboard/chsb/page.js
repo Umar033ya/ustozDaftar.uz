@@ -3,28 +3,57 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useAuth } from "@/lib/authContext";
+import { getAssessments, deleteAssessment, getResults } from "@/lib/firestoreService";
 
 export default function ChSBList() {
+  const { currentUser } = useAuth();
   const [assessments, setAssessments] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const assessmentsJson = localStorage.getItem("ustozdaftar_assessments");
-    if (assessmentsJson) {
-      const allAssessments = JSON.parse(assessmentsJson);
-      const chsbAssessments = allAssessments.filter((a) => a.type === "ChSB");
-      setAssessments(chsbAssessments.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
-    }
-  }, []);
+    if (!currentUser) return;
 
-  const handleDeleteAssessment = (id, e) => {
+    async function loadChSBList() {
+      try {
+        const allAssessments = await getAssessments(currentUser.uid);
+        const chsbAssessments = allAssessments.filter((a) => a.type === "ChSB");
+
+        const assessmentsWithStats = await Promise.all(
+          chsbAssessments.map(async (a) => {
+            try {
+              const results = await getResults(currentUser.uid, a.id);
+              const validResults = results.filter((r) => r.total !== "" && r.total !== undefined && r.total > 0);
+              const avgPercentage = validResults.length > 0
+                ? (validResults.reduce((sum, r) => sum + (r.percentage || 0), 0) / validResults.length).toFixed(1)
+                : 0;
+              return { ...a, studentCount: results.length, avgPercentage };
+            } catch (e) {
+              return { ...a, studentCount: a.studentCount || 0, avgPercentage: 0 };
+            }
+          })
+        );
+
+        setAssessments(assessmentsWithStats);
+      } catch (err) {
+        console.error("Error loading ChSB list:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadChSBList();
+  }, [currentUser]);
+
+  const handleDeleteAssessment = async (id, e) => {
     e.stopPropagation();
     if (confirm("Ushbu ChSB baholash natijalarini o'chirmoqchimisiz?")) {
-      const assessmentsJson = localStorage.getItem("ustozdaftar_assessments");
-      if (assessmentsJson) {
-        const allAssessments = JSON.parse(assessmentsJson);
-        const updated = allAssessments.filter((a) => a.id !== id);
-        localStorage.setItem("ustozdaftar_assessments", JSON.stringify(updated));
-        setAssessments(updated.filter((a) => a.type === "ChSB"));
+      try {
+        await deleteAssessment(currentUser.uid, id);
+        setAssessments(assessments.filter((a) => a.id !== id));
+      } catch (err) {
+        console.error("Error deleting ChSB assessment:", err);
+        alert("ChSB natijalarini o'chirishda xatolik yuz berdi");
       }
     }
   };
@@ -49,7 +78,9 @@ export default function ChSBList() {
       </div>
 
       {/* Assessments List */}
-      {assessments.length === 0 ? (
+      {loading ? (
+        <div className="text-center text-gray-500 py-12">Yuklanmoqda...</div>
+      ) : assessments.length === 0 ? (
         <div className="bg-white rounded-xl shadow-xs p-8 sm:p-12 border border-gray-200 text-center">
           <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -93,51 +124,44 @@ export default function ChSBList() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {assessments.map((assessment) => {
-                  const validResults = assessment.results.filter((r) => r.total !== "" && r.total > 0);
-                  const avgPercentage = validResults.length > 0
-                    ? (validResults.reduce((sum, r) => sum + r.percentage, 0) / validResults.length).toFixed(1)
-                    : 0;
-
-                  return (
-                    <tr key={assessment.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3.5 whitespace-nowrap text-sm font-semibold text-gray-900">
-                        ChSB {assessment.number}
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-900">
-                        {assessment.subject}
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-900">
-                        {assessment.className}
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-600">
-                        {assessment.date}
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-sm text-center text-gray-900">
-                        {assessment.results.length}
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-sm text-center font-bold text-gray-900">
-                        {avgPercentage}%
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-sm text-right">
-                        <div className="flex items-center justify-end gap-3">
-                          <Link
-                            href={`/dashboard/chsb/${assessment.id}`}
-                            className="text-blue-600 hover:text-blue-800 font-semibold text-xs sm:text-sm transition-colors"
-                          >
-                            Ochish
-                          </Link>
-                          <button
-                            onClick={(e) => handleDeleteAssessment(assessment.id, e)}
-                            className="text-red-600 hover:text-red-800 font-semibold text-xs sm:text-sm transition-colors"
-                          >
-                            O'chirish
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {assessments.map((assessment) => (
+                  <tr key={assessment.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3.5 whitespace-nowrap text-sm font-semibold text-gray-900">
+                      ChSB {assessment.number}
+                    </td>
+                    <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-900">
+                      {assessment.subject}
+                    </td>
+                    <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-900">
+                      {assessment.className}
+                    </td>
+                    <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-600">
+                      {assessment.date}
+                    </td>
+                    <td className="px-4 py-3.5 whitespace-nowrap text-sm text-center text-gray-900">
+                      {assessment.studentCount}
+                    </td>
+                    <td className="px-4 py-3.5 whitespace-nowrap text-sm text-center font-bold text-gray-900">
+                      {assessment.avgPercentage}%
+                    </td>
+                    <td className="px-4 py-3.5 whitespace-nowrap text-sm text-right">
+                      <div className="flex items-center justify-end gap-3">
+                        <Link
+                          href={`/dashboard/chsb/${assessment.id}`}
+                          className="text-blue-600 hover:text-blue-800 font-semibold text-xs sm:text-sm transition-colors"
+                        >
+                          Ochish
+                        </Link>
+                        <button
+                          onClick={(e) => handleDeleteAssessment(assessment.id, e)}
+                          className="text-red-600 hover:text-red-800 font-semibold text-xs sm:text-sm transition-colors"
+                        >
+                          O'chirish
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

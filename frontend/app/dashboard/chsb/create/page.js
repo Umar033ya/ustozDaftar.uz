@@ -4,9 +4,12 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useAuth } from "@/lib/authContext";
+import { getClasses, getStudents, createAssessment } from "@/lib/firestoreService";
 
 export default function CreateChSB() {
   const router = useRouter();
+  const { currentUser } = useAuth();
   const [classes, setClasses] = useState([]);
   const [formData, setFormData] = useState({
     classId: "",
@@ -16,13 +19,19 @@ export default function CreateChSB() {
     maxScore: 40,
   });
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    const classesJson = localStorage.getItem("ustozdaftar_classes");
-    if (classesJson) {
-      setClasses(JSON.parse(classesJson));
-    }
-  }, []);
+    if (!currentUser) return;
+
+    getClasses(currentUser.uid)
+      .then((loadedClasses) => {
+        setClasses(loadedClasses);
+      })
+      .catch((err) => {
+        console.error("Error loading classes:", err);
+      });
+  }, [currentUser]);
 
   const handleChange = (e) => {
     setFormData({
@@ -31,7 +40,7 @@ export default function CreateChSB() {
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
 
@@ -41,38 +50,41 @@ export default function CreateChSB() {
     }
 
     const selectedClass = classes.find((cls) => cls.id === formData.classId);
-    if (!selectedClass || !selectedClass.students || selectedClass.students.length === 0) {
-      setError("Tanlangan sinfda o'quvchilar yo'q. Avval o'quvchilarni sinfga qo'shing.");
+    if (!selectedClass) {
+      setError("Sinf topilmadi");
       return;
     }
 
-    const maxScore = Math.max(1, parseInt(formData.maxScore) || 1);
+    setSubmitting(true);
 
-    const assessment = {
-      id: Date.now().toString(),
-      type: "ChSB",
-      classId: formData.classId,
-      className: selectedClass.name,
-      academicYear: selectedClass.academicYear,
-      subject: formData.subject.trim(),
-      number: formData.chsbNumber,
-      date: formData.date,
-      maxScore: maxScore,
-      results: selectedClass.students.map((student) => ({
-        studentId: student.id,
-        studentName: student.name,
-        total: "",
-        percentage: 0,
-      })),
-      createdAt: new Date().toISOString(),
-    };
+    try {
+      const students = await getStudents(currentUser.uid, formData.classId);
+      if (!students || students.length === 0) {
+        setError("Tanlangan sinfda o'quvchilar yo'q. Avval o'quvchilarni sinfga qo'shing.");
+        setSubmitting(false);
+        return;
+      }
 
-    const assessmentsJson = localStorage.getItem("ustozdaftar_assessments");
-    const assessments = assessmentsJson ? JSON.parse(assessmentsJson) : [];
-    assessments.push(assessment);
-    localStorage.setItem("ustozdaftar_assessments", JSON.stringify(assessments));
+      const maxScore = Math.max(1, parseInt(formData.maxScore) || 1);
 
-    router.push(`/dashboard/chsb/${assessment.id}`);
+      const assessmentData = {
+        type: "ChSB",
+        classId: formData.classId,
+        className: selectedClass.name,
+        academicYear: selectedClass.academicYear,
+        subject: formData.subject.trim(),
+        number: formData.chsbNumber,
+        date: formData.date,
+        maxScore: maxScore,
+      };
+
+      const newId = await createAssessment(currentUser.uid, assessmentData, students);
+      router.push(`/dashboard/chsb/${newId}`);
+    } catch (err) {
+      console.error("Error creating ChSB assessment:", err);
+      setError("ChSB yaratishda xatolik yuz berdi");
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -111,7 +123,7 @@ export default function CreateChSB() {
                 <option value="">Sinfni tanlang</option>
                 {classes.map((cls) => (
                   <option key={cls.id} value={cls.id}>
-                    {cls.name} ({cls.academicYear}) - {cls.students?.length || 0} o'quvchi
+                    {cls.name} ({cls.academicYear}) - {cls.studentCount || 0} o'quvchi
                   </option>
                 ))}
               </select>
@@ -186,9 +198,10 @@ export default function CreateChSB() {
           <div className="flex flex-col sm:flex-row gap-3">
             <button
               type="submit"
-              className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 font-medium text-sm sm:text-base transition-colors"
+              disabled={submitting}
+              className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 font-medium text-sm sm:text-base transition-colors disabled:bg-gray-400"
             >
-              Yaratish va ballarni kiritish
+              {submitting ? "Yaratilmoqda..." : "Yaratish va ballarni kiritish"}
             </button>
             <Link
               href="/dashboard/chsb"

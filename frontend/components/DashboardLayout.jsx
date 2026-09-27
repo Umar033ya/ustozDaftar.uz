@@ -4,25 +4,27 @@ import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import Logo from "./Logo";
+import { useAuth } from "@/lib/authContext";
 
 export default function DashboardLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [user, setUser] = useState(null);
+  const { currentUser, loading, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    const userJson = localStorage.getItem("ustozdaftar_user");
-    if (!userJson) {
+    if (!loading && !currentUser) {
       router.push("/login");
-      return;
     }
-    setUser(JSON.parse(userJson));
-  }, [router]);
+  }, [loading, currentUser, router]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("ustozdaftar_user");
-    router.push("/");
+  const handleLogout = async () => {
+    try {
+      await logout();
+      router.push("/");
+    } catch (e) {
+      console.error("Logout error:", e);
+    }
   };
 
   const navItems = [
@@ -83,8 +85,12 @@ export default function DashboardLayout({ children }) {
     },
   ];
 
-  if (!user) {
-    return null;
+  if (loading || !currentUser) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-gray-500 font-medium text-sm">Yuklanmoqda...</div>
+      </div>
+    );
   }
 
   const isActive = (path) => {

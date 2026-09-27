@@ -52,3 +52,14 @@ Thumbs.db
 
 # Temporary test & scratch files
 scratch/
+
+# Firebase local tooling caches (emulator state, logs)
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+
+# Local AI agent tooling caches (vendored skill libraries, per-developer)
+.agents/
+.claude/
+skills-lock.json

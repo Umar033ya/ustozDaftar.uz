@@ -1,41 +1,132 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
 import StudentPercentageChart from "@/components/StudentPercentageChart";
 import TaskAverageChart from "@/components/TaskAverageChart";
 import { exportBSBToExcel } from "@/lib/excelExport";
+import { useAuth } from "@/lib/authContext";
+import {
+  getAssessmentById,
+  getResults,
+  getStudents,
+  reconcileResultsWithStudents,
+  updateResult,
+  getUserProfile,
+} from "@/lib/firestoreService";
 
 export default function BSBResult() {
   const router = useRouter();
   const params = useParams();
   const assessmentId = params.id;
+  const { currentUser } = useAuth();
   
   const [assessment, setAssessment] = useState(null);
   const [results, setResults] = useState([]);
   const [saving, setSaving] = useState(false);
   const [schoolName, setSchoolName] = useState("");
+  const [loading, setLoading] = useState(true);
+  const saveTimers = useRef({});
+  const pendingSaves = useRef({});
 
   useEffect(() => {
-    const schoolNameJson = localStorage.getItem("ustozdaftar_school_name");
-    if (schoolNameJson) {
-      setSchoolName(schoolNameJson);
-    }
+    if (!currentUser || !assessmentId) return;
 
-    const assessmentsJson = localStorage.getItem("ustozdaftar_assessments");
-    if (assessmentsJson) {
-      const assessments = JSON.parse(assessmentsJson);
-      const foundAssessment = assessments.find((a) => a.id === assessmentId);
-      if (foundAssessment) {
-        setAssessment(foundAssessment);
-        setResults(foundAssessment.results || []);
-      } else {
-        router.push("/dashboard/bsb");
+    async function loadData() {
+      try {
+        const [loadedAssessment, profile, loadedResults] = await Promise.all([
+          getAssessmentById(currentUser.uid, assessmentId),
+          getUserProfile(currentUser.uid),
+          getResults(currentUser.uid, assessmentId),
+        ]);
+
+        if (loadedAssessment) {
+          setAssessment(loadedAssessment);
+          setSchoolName(profile?.schoolName || "");
+
+          // One row per student of the class, no more, no less
+          let students = [];
+          if (loadedAssessment.classId) {
+            students = await getStudents(currentUser.uid, loadedAssessment.classId);
+          }
+          const reconciled = await reconcileResultsWithStudents(
+            currentUser.uid,
+            loadedAssessment,
+            students,
+            loadedResults
+          );
+          setResults(reconciled);
+        } else {
+          router.push("/dashboard/bsb");
+        }
+      } catch (err) {
+        console.error("Error loading BSB assessment:", err);
+      } finally {
+        setLoading(false);
       }
     }
-  }, [assessmentId, router]);
+
+    loadData();
+  }, [currentUser, assessmentId, router]);
+
+  const flushSave = useCallback(
+    async (studentId) => {
+      const pending = pendingSaves.current[studentId];
+      if (!pending) return;
+      delete pendingSaves.current[studentId];
+      try {
+        await updateResult(currentUser.uid, assessmentId, studentId, pending);
+      } catch (e) {
+        console.error("Error updating result:", e);
+      } finally {
+        setSaving(false);
+      }
+    },
+    [currentUser, assessmentId]
+  );
+
+  const debouncedSave = useCallback(
+    (studentId, updatedData) => {
+      pendingSaves.current[studentId] = updatedData;
+      if (saveTimers.current[studentId]) {
+        clearTimeout(saveTimers.current[studentId]);
+      }
+      setSaving(true);
+      saveTimers.current[studentId] = setTimeout(() => {
+        delete saveTimers.current[studentId];
+        flushSave(studentId);
+      }, 600);
+    },
+    [flushSave]
+  );
+
+  // Never lose the last edits: flush pending scores on navigation, tab switch or reload
+  useEffect(() => {
+    const flushAll = () => {
+      Object.keys(saveTimers.current).forEach((studentId) => {
+        clearTimeout(saveTimers.current[studentId]);
+        delete saveTimers.current[studentId];
+      });
+      const pendingIds = Object.keys(pendingSaves.current);
+      pendingIds.forEach((studentId) => {
+        const data = pendingSaves.current[studentId];
+        delete pendingSaves.current[studentId];
+        updateResult(currentUser.uid, assessmentId, studentId, data).catch((e) =>
+          console.error("Error updating result:", e)
+        );
+      });
+    };
+
+    window.addEventListener("pagehide", flushAll);
+    document.addEventListener("visibilitychange", flushAll);
+    return () => {
+      window.removeEventListener("pagehide", flushAll);
+      document.removeEventListener("visibilitychange", flushAll);
+      flushAll();
+    };
+  }, [currentUser, assessmentId]);
 
   const handleScoreChange = (studentIndex, taskIndex, value) => {
     const newResults = [...results];
@@ -47,29 +138,23 @@ export default function BSBResult() {
       return;
     }
 
-    newResults[studentIndex].scores[taskIndex] = score;
+    const updatedResult = { ...newResults[studentIndex] };
+    updatedResult.scores = [...(updatedResult.scores || [])];
+    updatedResult.scores[taskIndex] = score;
     
     // Calculate total and percentage
-    const total = newResults[studentIndex].scores.reduce((sum, s) => sum + (s === "" || isNaN(s) ? 0 : s), 0);
-    newResults[studentIndex].total = total;
-    newResults[studentIndex].percentage = assessment.maxTotal > 0 ? (total / assessment.maxTotal) * 100 : 0;
+    const total = updatedResult.scores.reduce((sum, s) => sum + (s === "" || isNaN(s) ? 0 : s), 0);
+    updatedResult.total = total;
+    updatedResult.percentage = assessment.maxTotal > 0 ? (total / assessment.maxTotal) * 100 : 0;
     
+    newResults[studentIndex] = updatedResult;
     setResults(newResults);
-    saveResults(newResults);
-  };
 
-  const saveResults = (newResults) => {
-    setSaving(true);
-    const assessmentsJson = localStorage.getItem("ustozdaftar_assessments");
-    if (assessmentsJson) {
-      const assessments = JSON.parse(assessmentsJson);
-      const updatedAssessments = assessments.map((a) =>
-        a.id === assessmentId ? { ...a, results: newResults } : a
-      );
-      localStorage.setItem("ustozdaftar_assessments", JSON.stringify(updatedAssessments));
-      setAssessment((prev) => (prev ? { ...prev, results: newResults } : null));
-    }
-    setTimeout(() => setSaving(false), 400);
+    debouncedSave(updatedResult.id || updatedResult.studentId, {
+      scores: updatedResult.scores,
+      total: updatedResult.total,
+      percentage: updatedResult.percentage,
+    });
   };
 
   const handleExport = () => {
@@ -83,7 +168,7 @@ export default function BSBResult() {
   const calculateStatistics = () => {
     if (!results || results.length === 0) return null;
     
-    const validResults = results.filter((r) => r.total > 0 || r.scores.some((s) => s !== "" && s > 0));
+    const validResults = results.filter((r) => r.total > 0 || (r.scores || []).some((s) => s !== "" && s > 0));
     const totals = (validResults.length > 0 ? validResults : results).map((r) => r.total || 0);
     const percentages = (validResults.length > 0 ? validResults : results).map((r) => r.percentage || 0);
 
@@ -92,7 +177,7 @@ export default function BSBResult() {
     // Calculate task averages
     const taskAverages = assessment.tasks.map((task, taskIndex) => {
       const taskScores = activeList
-        .map((r) => r.scores[taskIndex])
+        .map((r) => (r.scores || [])[taskIndex])
         .filter((s) => s !== "" && s !== undefined && !isNaN(s));
 
       if (taskScores.length === 0) return "0.0";
@@ -116,6 +201,14 @@ export default function BSBResult() {
   };
 
   const stats = calculateStatistics();
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="text-center text-gray-500 py-12">Yuklanmoqda...</div>
+      </DashboardLayout>
+    );
+  }
 
   if (!assessment) {
     return null;
@@ -253,7 +346,7 @@ export default function BSBResult() {
                 </td>
               </tr>
 
-              {/* Dynamic Student Rows (EXACTLY N students, no blank rows!) */}
+              {/* Dynamic Student Rows */}
               {results.map((result, studentIndex) => (
                 <tr key={result.studentId} className="hover:bg-gray-50/80 transition-colors">
                   <td className="px-3 py-2 border border-gray-300 text-center font-medium text-gray-700">
@@ -268,7 +361,7 @@ export default function BSBResult() {
                         type="number"
                         min="0"
                         max={task.maxScore}
-                        value={result.scores[taskIndex] === "" || result.scores[taskIndex] === undefined ? "" : result.scores[taskIndex]}
+                        value={(result.scores && result.scores[taskIndex] !== undefined && result.scores[taskIndex] !== "") ? result.scores[taskIndex] : ""}
                         onChange={(e) => handleScoreChange(studentIndex, taskIndex, e.target.value)}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {

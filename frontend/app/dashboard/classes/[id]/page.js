@@ -4,35 +4,68 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useAuth } from "@/lib/authContext";
+import {
+  getClassById,
+  getStudents,
+  addStudent,
+  deleteStudent,
+  updateStudentName,
+  syncStudentNameInAssessments,
+  syncNewStudentToAssessments,
+  setClassStudentCount,
+} from "@/lib/firestoreService";
 
 export default function ClassDetail() {
   const router = useRouter();
   const params = useParams();
   const classId = params.id;
+  const { currentUser } = useAuth();
   
   const [classData, setClassData] = useState(null);
+  const [students, setStudents] = useState([]);
   const [showAddStudentForm, setShowAddStudentForm] = useState(false);
   const [studentName, setStudentName] = useState("");
   const [error, setError] = useState("");
   const [editingStudentId, setEditingStudentId] = useState(null);
   const [editStudentName, setEditStudentName] = useState("");
   const [editError, setEditError] = useState("");
+  const [savingStudent, setSavingStudent] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const classesJson = localStorage.getItem("ustozdaftar_classes");
-    if (classesJson) {
-      const classes = JSON.parse(classesJson);
-      const foundClass = classes.find((cls) => cls.id === classId);
-      if (foundClass) {
-        setClassData(foundClass);
-      } else {
-        router.push("/dashboard/classes");
+    if (!currentUser || !classId) return;
+
+    async function loadClassAndStudents() {
+      try {
+        const loadedClass = await getClassById(currentUser.uid, classId);
+        if (loadedClass) {
+          setClassData(loadedClass);
+          const loadedStudents = await getStudents(currentUser.uid, classId);
+          setStudents(loadedStudents);
+          // Repair a drifted class counter (legacy import / interrupted write)
+          if ((loadedClass.studentCount || 0) !== loadedStudents.length) {
+            setClassStudentCount(currentUser.uid, classId, loadedStudents.length).catch((err) =>
+              console.error("Error repairing class student count:", err)
+            );
+            setClassData({ ...loadedClass, studentCount: loadedStudents.length });
+          }
+        } else {
+          router.push("/dashboard/classes");
+        }
+      } catch (err) {
+        console.error("Error loading class details:", err);
+      } finally {
+        setLoading(false);
       }
     }
-  }, [classId, router]);
 
-  const handleAddStudent = (e) => {
+    loadClassAndStudents();
+  }, [currentUser, classId, router]);
+
+  const handleAddStudent = async (e, keepOpen = false) => {
     e.preventDefault();
+    if (savingStudent) return;
     setError("");
 
     const trimmedName = studentName.trim();
@@ -42,8 +75,7 @@ export default function ClassDetail() {
       return;
     }
 
-    // Check for duplicate student name in this class (case-insensitive)
-    const exists = (classData.students || []).some(
+    const exists = students.some(
       (s) => s.name.toLowerCase() === trimmedName.toLowerCase()
     );
     if (exists) {
@@ -51,91 +83,50 @@ export default function ClassDetail() {
       return;
     }
 
-    const newStudent = {
-      id: Date.now().toString(),
-      name: trimmedName,
-      createdAt: new Date().toISOString(),
-    };
+    try {
+      setSavingStudent(true);
+      const newStudent = await addStudent(currentUser.uid, classId, trimmedName);
+      await syncNewStudentToAssessments(currentUser.uid, classId, newStudent);
 
-    const updatedStudents = [...(classData.students || []), newStudent];
-    const updatedClass = {
-      ...classData,
-      students: updatedStudents,
-    };
-
-    // Update classes in localStorage
-    const classesJson = localStorage.getItem("ustozdaftar_classes");
-    if (classesJson) {
-      const classes = JSON.parse(classesJson);
-      const updatedClasses = classes.map((cls) =>
-        cls.id === classId ? updatedClass : cls
+      const updatedStudents = [...students, newStudent];
+      // Keep the cached class counter exactly in sync with the roster
+      setClassStudentCount(currentUser.uid, classId, updatedStudents.length).catch((err) =>
+        console.error("Error updating class student count:", err)
       );
-      localStorage.setItem("ustozdaftar_classes", JSON.stringify(updatedClasses));
-      setClassData(updatedClass);
-    }
 
-    // Automatically sync new student to existing assessments of this class
-    const assessmentsJson = localStorage.getItem("ustozdaftar_assessments");
-    if (assessmentsJson) {
-      const assessments = JSON.parse(assessmentsJson);
-      const updatedAssessments = assessments.map((assessment) => {
-        if (assessment.classId === classId) {
-          const studentResultExists = assessment.results.some((r) => r.studentId === newStudent.id);
-          if (!studentResultExists) {
-            const initialResult = {
-              studentId: newStudent.id,
-              studentName: newStudent.name,
-              scores: assessment.type === "BSB" ? (assessment.tasks || []).map(() => "") : undefined,
-              total: assessment.type === "BSB" ? 0 : "",
-              percentage: 0,
-            };
-            return {
-              ...assessment,
-              results: [...assessment.results, initialResult],
-            };
-          }
-        }
-        return assessment;
-      });
-      localStorage.setItem("ustozdaftar_assessments", JSON.stringify(updatedAssessments));
+      setStudents(updatedStudents);
+      setClassData((prev) => (prev ? { ...prev, studentCount: updatedStudents.length } : prev));
+      setStudentName("");
+      setError("");
+      // "Yana qo'shish" keeps the form open so the next name can be typed right away
+      if (!keepOpen) {
+        setShowAddStudentForm(false);
+      }
+    } catch (err) {
+      console.error("Error adding student:", err);
+      setError("O'quvchi qo'shishda xatolik yuz berdi");
+    } finally {
+      setSavingStudent(false);
     }
-
-    setStudentName("");
-    setShowAddStudentForm(false);
   };
 
-  const handleDeleteStudent = (studentId) => {
+  const handleDeleteStudent = async (studentId) => {
     if (confirm("O'quvchini o'chirmoqchimisiz?")) {
-      const updatedClass = {
-        ...classData,
-        students: classData.students.filter((student) => student.id !== studentId),
-      };
+      try {
+        await deleteStudent(currentUser.uid, classId, studentId);
 
-      // Update classes in localStorage
-      const classesJson = localStorage.getItem("ustozdaftar_classes");
-      if (classesJson) {
-        const classes = JSON.parse(classesJson);
-        const updatedClasses = classes.map((cls) =>
-          cls.id === classId ? updatedClass : cls
+        const updatedStudents = students.filter((student) => student.id !== studentId);
+        setClassStudentCount(currentUser.uid, classId, updatedStudents.length).catch((err) =>
+          console.error("Error updating class student count:", err)
         );
-        localStorage.setItem("ustozdaftar_classes", JSON.stringify(updatedClasses));
-        setClassData(updatedClass);
-      }
 
-      // Sync deletion: Remove student from all assessments of this class
-      const assessmentsJson = localStorage.getItem("ustozdaftar_assessments");
-      if (assessmentsJson) {
-        const assessments = JSON.parse(assessmentsJson);
-        const updatedAssessments = assessments.map((assessment) => {
-          if (assessment.classId === classId) {
-            return {
-              ...assessment,
-              results: assessment.results.filter((r) => r.studentId !== studentId),
-            };
-          }
-          return assessment;
-        });
-        localStorage.setItem("ustozdaftar_assessments", JSON.stringify(updatedAssessments));
+        setStudents(updatedStudents);
+        setClassData((prev) =>
+          prev ? { ...prev, studentCount: updatedStudents.length } : prev
+        );
+      } catch (err) {
+        console.error("Error deleting student:", err);
+        alert("O'quvchini o'chirishda xatolik yuz berdi");
       }
     }
   };
@@ -152,7 +143,7 @@ export default function ClassDetail() {
     setEditError("");
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     setEditError("");
     const trimmedName = editStudentName.trim();
 
@@ -161,8 +152,7 @@ export default function ClassDetail() {
       return;
     }
 
-    // Check for duplicate student name (excluding current editing student)
-    const exists = classData.students.some(
+    const exists = students.some(
       (s) => s.id !== editingStudentId && s.name.toLowerCase() === trimmedName.toLowerCase()
     );
     if (exists) {
@@ -170,50 +160,32 @@ export default function ClassDetail() {
       return;
     }
 
-    const updatedClass = {
-      ...classData,
-      students: classData.students.map((student) =>
-        student.id === editingStudentId
-          ? { ...student, name: trimmedName }
-          : student
-      ),
-    };
+    try {
+      await updateStudentName(currentUser.uid, classId, editingStudentId, trimmedName);
+      await syncStudentNameInAssessments(currentUser.uid, classId, editingStudentId, trimmedName);
 
-    // Update classes in localStorage
-    const classesJson = localStorage.getItem("ustozdaftar_classes");
-    if (classesJson) {
-      const classes = JSON.parse(classesJson);
-      const updatedClasses = classes.map((cls) =>
-        cls.id === classId ? updatedClass : cls
+      setStudents(
+        students.map((student) =>
+          student.id === editingStudentId ? { ...student, name: trimmedName } : student
+        )
       );
-      localStorage.setItem("ustozdaftar_classes", JSON.stringify(updatedClasses));
-      setClassData(updatedClass);
-    }
 
-    // Sync edit: Update student names in all existing assessments while preserving studentId
-    const assessmentsJson = localStorage.getItem("ustozdaftar_assessments");
-    if (assessmentsJson) {
-      const assessments = JSON.parse(assessmentsJson);
-      const updatedAssessments = assessments.map((assessment) => {
-        if (assessment.classId === classId) {
-          return {
-            ...assessment,
-            results: assessment.results.map((result) =>
-              result.studentId === editingStudentId
-                ? { ...result, studentName: trimmedName }
-                : result
-            ),
-          };
-        }
-        return assessment;
-      });
-      localStorage.setItem("ustozdaftar_assessments", JSON.stringify(updatedAssessments));
+      setEditingStudentId(null);
+      setEditStudentName("");
+      setEditError("");
+    } catch (err) {
+      console.error("Error editing student:", err);
+      setEditError("O'quvchi ismini tahrirlashda xatolik yuz berdi");
     }
-
-    setEditingStudentId(null);
-    setEditStudentName("");
-    setEditError("");
   };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="text-center text-gray-500 py-12">Yuklanmoqda...</div>
+      </DashboardLayout>
+    );
+  }
 
   if (!classData) {
     return null;
@@ -250,7 +222,7 @@ export default function ClassDetail() {
               {error}
             </div>
           )}
-          <form onSubmit={handleAddStudent}>
+          <form onSubmit={(e) => handleAddStudent(e, false)}>
             <div>
               <label htmlFor="studentName" className="block text-sm font-medium text-gray-700 mb-1">
                 F.I.Sh. (Familiya, Ism, Sharif)
@@ -266,12 +238,21 @@ export default function ClassDetail() {
                 placeholder="Masalan: Karimov Abdulla Bekzod o'g'li"
               />
             </div>
-            <div className="flex gap-3 mt-4">
+            <div className="flex flex-wrap gap-3 mt-4">
               <button
                 type="submit"
-                className="bg-blue-600 text-white px-5 py-2.5 rounded-lg hover:bg-blue-700 font-medium text-sm transition-colors"
+                disabled={savingStudent}
+                className="bg-blue-600 text-white px-5 py-2.5 rounded-lg hover:bg-blue-700 font-medium text-sm transition-colors disabled:bg-gray-400"
               >
-                Qo'shish
+                Qo&apos;shish
+              </button>
+              <button
+                type="button"
+                disabled={savingStudent}
+                onClick={(e) => handleAddStudent(e, true)}
+                className="bg-white text-blue-600 border border-blue-200 px-5 py-2.5 rounded-lg hover:bg-blue-50 font-medium text-sm transition-colors disabled:bg-gray-100 disabled:text-gray-400"
+              >
+                Yana qo&apos;shish
               </button>
               <button
                 type="button"
@@ -284,6 +265,9 @@ export default function ClassDetail() {
                 Bekor qilish
               </button>
             </div>
+            <p className="text-xs text-gray-500 mt-3">
+              &laquo;Yana qo&apos;shish&raquo; formani yopmaydi — keyingi o&apos;quvchini darhol kiritishingiz mumkin.
+            </p>
           </form>
         </div>
       )}
@@ -299,11 +283,11 @@ export default function ClassDetail() {
       <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
         <div className="p-4 sm:p-6 border-b border-gray-200 flex items-center justify-between">
           <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
-            O'quvchilar ro'yxati ({classData.students?.length || 0})
+            O'quvchilar ro'yxati ({students.length})
           </h2>
         </div>
         
-        {(!classData.students || classData.students.length === 0) ? (
+        {students.length === 0 ? (
           <div className="p-8 sm:p-12 text-center">
             <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
@@ -334,7 +318,7 @@ export default function ClassDetail() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {classData.students.map((student, index) => (
+                {students.map((student, index) => (
                   <tr key={student.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3 text-sm text-gray-900 text-center font-medium">
                       {index + 1}
