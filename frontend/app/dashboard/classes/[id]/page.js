@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
+import AiStudentImport from "@/components/AiStudentImport";
 import { useAuth } from "@/lib/authContext";
 import {
   getClassById,
@@ -31,7 +32,14 @@ export default function ClassDetail() {
   const [editStudentName, setEditStudentName] = useState("");
   const [editError, setEditError] = useState("");
   const [savingStudent, setSavingStudent] = useState(false);
+  const [aiNotice, setAiNotice] = useState("");
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!aiNotice) return;
+    const timer = setTimeout(() => setAiNotice(""), 5000);
+    return () => clearTimeout(timer);
+  }, [aiNotice]);
 
   useEffect(() => {
     if (!currentUser || !classId) return;
@@ -108,6 +116,11 @@ export default function ClassDetail() {
     } finally {
       setSavingStudent(false);
     }
+  };
+
+  const handleAiStudentsAdded = (created, totalCount) => {
+    setStudents((prev) => [...prev, ...created]);
+    setClassData((prev) => (prev ? { ...prev, studentCount: totalCount } : prev));
   };
 
   const handleDeleteStudent = async (studentId) => {
@@ -202,16 +215,32 @@ export default function ClassDetail() {
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">{classData.name}</h1>
           <p className="text-gray-600 mt-0.5 text-sm sm:text-base">{classData.academicYear}</p>
         </div>
-        <button
-          onClick={() => setShowAddStudentForm(!showAddStudentForm)}
-          className="bg-blue-600 text-white px-5 py-2.5 rounded-lg hover:bg-blue-700 font-medium flex items-center justify-center gap-2 text-sm sm:text-base transition-colors"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          O'quvchi qo'shish
-        </button>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <AiStudentImport
+            uid={currentUser.uid}
+            classId={classId}
+            existingStudents={students}
+            onStudentsAdded={handleAiStudentsAdded}
+            onNotify={setAiNotice}
+          />
+          <button
+            onClick={() => setShowAddStudentForm(!showAddStudentForm)}
+            className="bg-blue-600 text-white px-5 py-2.5 rounded-lg hover:bg-blue-700 font-medium flex items-center justify-center gap-2 text-sm sm:text-base transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            O'quvchi qo'shish
+          </button>
+        </div>
       </div>
+
+      {/* AI import success notice */}
+      {aiNotice && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-2.5 rounded-lg mb-4 sm:mb-6 text-sm font-medium">
+          {aiNotice}
+        </div>
+      )}
 
       {/* Add Student Form */}
       {showAddStudentForm && (
