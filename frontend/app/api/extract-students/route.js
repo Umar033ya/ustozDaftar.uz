@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { AuthError, requireAuth } from "@/lib/firebaseAdmin";
+import { MAX_STUDENTS, normalizeStudentNames } from "@/lib/studentNames";
 
 // This route is server-only. The Gemini key is read from process.env at
 // request time and is never sent to the browser: no NEXT_PUBLIC_ prefix is
@@ -83,41 +84,16 @@ const PROMPT = [
   "- Copy each name EXACTLY as it is written in the image: same letters, same spelling, same apostrophes, same diacritics, same word order, same capitalization.",
   "- Do NOT translate, transliterate, correct, normalize, shorten, expand or re-order any name.",
   "- Do NOT reorder names into a different sequence than the visual order of the list.",
+  "- Keep the whole name as printed, including any patronymic or father's name (for example \"Umarjon o'g'li\" or \"Nurmuhamedovich\"): it is removed afterwards by the server.",
+  `- Read every student on the list, up to ${MAX_STUDENTS} in total.`,
   "- Ignore anything that is not a student name (headers, dates, subjects, teachers, phone numbers, column labels, page numbers).",
   "- If the same name appears in more than one image, output it only once.",
-  "- Include a name only if you can actually read it. Never invent, guess or complete names.",
+  "- Include a name only if you can actually read it. Never invent, guess or complete names, and never pad the list with blanks.",
   "- If no student name can be read, return an empty list.",
 ].join("\n");
 
 function errorResponse(message, status, code) {
   return NextResponse.json({ error: message, code }, { status });
-}
-
-/** Collapse whitespace and drop surrounding numbering/bullets the model may echo back. */
-function normalizeName(value) {
-  if (typeof value !== "string") return "";
-  return value
-    .replace(/\s+/g, " ")
-    .replace(/^[\s\-–—•*·.\)\]]+/, "")
-    .replace(/[\s\-–—•*·.\)\]]+$/, "")
-    .trim();
-}
-
-/**
- * Drop obvious duplicates while preserving first-seen order.
- * Names are compared case-insensitively on collapsed whitespace, so
- * "Karimov  Abdulla" and "karimov abdulla" collapse into one entry.
- */
-function dedupeNames(names) {
-  const seen = new Set();
-  const result = [];
-  for (const name of names) {
-    const key = name.toLocaleLowerCase("uz");
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push(name);
-  }
-  return result;
 }
 
 function parseGeminiPayload(json) {
@@ -275,7 +251,7 @@ export async function POST(request) {
       continue;
     }
 
-    const fullNames = dedupeNames(parsed.students.map((s) => normalizeName(s?.fullName)).filter(Boolean));
+    const fullNames = normalizeStudentNames(parsed.students.map((student) => student?.fullName));
 
     return NextResponse.json({ students: fullNames.map((fullName) => ({ fullName })) });
   }

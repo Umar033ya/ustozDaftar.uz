@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useMemo } from "react";
 import { auth } from "@/lib/firebase";
+import { nameKey } from "@/lib/studentNames";
 import {
   addStudent,
   syncNewStudentToAssessments,
@@ -13,7 +14,14 @@ const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const ACCEPTED_MIME_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"];
 const ACCEPT_ATTRIBUTE = "image/jpeg,image/png,image/webp,image/heic,image/heif";
 
-const sameName = (a = "", b = "") => a.trim().toLowerCase() === b.trim().toLowerCase();
+// Both sides are normalized, so a roster entry typed as "Yakubov Abdulla
+// Umarjon o'g'li" is recognized as the same person as the extracted
+// "Yakubov Abdulla".
+const sameName = (a = "", b = "") => {
+  const left = nameKey(a);
+  const right = nameKey(b);
+  return left !== "" && left === right;
+};
 
 function Banner({ tone = "error", children }) {
   const tones = {
