@@ -50,7 +50,13 @@ function allowRequest(uid) {
 
 // The configured model is tried first; the rest are tried in order when the
 // model is retired or temporarily saturated (Gemini answers 404/503 for both).
-const FALLBACK_MODELS = ["gemini-3-flash-preview", "gemini-3.5-flash", "gemini-3.8-flash"];
+const DEFAULT_MODEL = "gemini-3.6-flash";
+const FALLBACK_MODELS = [
+  "gemini-3.6-flash",
+  "gemini-3.5-flash",
+  "gemini-2.5-flash",
+  "gemini-1.5-flash",
+];
 
 const ACCEPTED_MIME_TYPES = new Set([
   "image/jpeg",
@@ -99,11 +105,31 @@ function errorResponse(message, status, code) {
 function parseGeminiPayload(json) {
   const parts = json?.candidates?.[0]?.content?.parts;
   if (!Array.isArray(parts)) return null;
-  const text = parts.map((part) => part?.text || "").join("");
-  if (!text.trim()) return null;
+
+  const textParts = parts
+    .filter((part) => typeof part?.text === "string" && !part?.thought)
+    .map((part) => part.text);
+
+  let text = textParts.join("").trim();
+  if (!text) {
+    text = parts.map((part) => part?.text || "").join("").trim();
+  }
+
+  if (!text) return null;
+
+  text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+
   try {
     return JSON.parse(text);
   } catch {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        return JSON.parse(match[0]);
+      } catch {
+        return null;
+      }
+    }
     return null;
   }
 }
@@ -122,7 +148,7 @@ export async function POST(request) {
   try {
     user = await requireAuth(request);
   } catch (error) {
-    if (error instanceof AuthError) {
+    if (error instanceof AuthError || error?.name === "AuthError") {
       const missing = error.message === "missing_token";
       return errorResponse(
         missing
@@ -208,7 +234,7 @@ export async function POST(request) {
     },
   };
 
-  const models = [process.env.GEMINI_MODEL, ...FALLBACK_MODELS].filter(
+  const models = [process.env.GEMINI_MODEL, DEFAULT_MODEL, ...FALLBACK_MODELS].filter(
     (model, index, all) => model && all.indexOf(model) === index
   );
 
@@ -231,9 +257,12 @@ export async function POST(request) {
       // 404 = model retired for this key, 429 = rate limited, 503 = saturated.
       // All are worth retrying on the next candidate model.
       const detail = await response.text().catch(() => "");
+      const isRateLimit = response.status === 429;
       lastError = {
         status: response.status,
-        message: `Gemini so'rovi muvaffaqiyatsiz bo'ldi (${response.status}).`,
+        message: isRateLimit
+          ? "Gemini limitiga yetildi. Bir ozdan so'ng qayta urinib ko'ring."
+          : `Gemini so'rovi muvaffaqiyatsiz bo'ldi (${response.status}).`,
         detail,
       };
       continue;
@@ -256,8 +285,15 @@ export async function POST(request) {
     return NextResponse.json({ students: fullNames.map((fullName) => ({ fullName })) });
   }
 
-  // Never leak the key or upstream body to the client.
-  const status = lastError && [401, 403].includes(lastError.status) ? 502 : 500;
+  // Preserve upstream error status code (e.g. 429, 502, 503) instead of masking all errors behind 500.
+  // Never leak the API key.
+  const status =
+    lastError?.status && lastError.status >= 400 && lastError.status < 600
+      ? lastError.status === 404
+        ? 502
+        : lastError.status
+      : 500;
+
   return errorResponse(
     lastError?.message || "Gemini xatosi yuz berdi. Qayta urinib ko'ring.",
     status,
