@@ -1,19 +1,26 @@
 import { NextResponse } from "next/server";
-import { AuthError, requireAuth } from "@/lib/firebaseAdmin";
+import { AuthError, ConfigError, requireAuth } from "@/lib/firebaseAdmin";
 import { MAX_STUDENTS, normalizeStudentNames } from "@/lib/studentNames";
 
-// This route is server-only. The Gemini key is read from process.env at
+// This route is server-only. The OpenRouter key is read from process.env at
 // request time and is never sent to the browser: no NEXT_PUBLIC_ prefix is
 // used anywhere, and the client only ever talks to this endpoint.
 //
 // Every request must carry a Firebase ID token (`Authorization: Bearer <token>`)
 // which is verified with the Firebase Admin SDK before anything else happens,
-// so an anonymous caller cannot spend the Gemini quota.
+// so an anonymous caller cannot spend the OpenRouter quota.
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
+const OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
+// dots-studio/dots-3-note-preview:free is a free OpenRouter model that supports
+// image input (modality: text+image→text) — verified via /api/v1/models on
+// 2026-10-06. 16B active / 280B total MoE, 512K context window.
+// Chosen over google/gemma-4-31b-it:free because that model's shared Google AI
+// Studio pool was returning provider-side 429s; Dots Studio uses a separate
+// upstream backend.
+const OPENROUTER_MODEL = "dots-studio/dots-3-note-preview:free";
 const MAX_IMAGES = 3;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // per image
 
@@ -48,16 +55,6 @@ function allowRequest(uid) {
   return true;
 }
 
-// The configured model is tried first; the rest are tried in order when the
-// model is retired or temporarily saturated (Gemini answers 404/503 for both).
-const DEFAULT_MODEL = "gemini-3.6-flash";
-const FALLBACK_MODELS = [
-  "gemini-3.6-flash",
-  "gemini-3.5-flash",
-  "gemini-2.5-flash",
-  "gemini-1.5-flash",
-];
-
 const ACCEPTED_MIME_TYPES = new Set([
   "image/jpeg",
   "image/jpg",
@@ -66,21 +63,6 @@ const ACCEPTED_MIME_TYPES = new Set([
   "image/heic",
   "image/heif",
 ]);
-
-const RESPONSE_SCHEMA = {
-  type: "OBJECT",
-  properties: {
-    students: {
-      type: "ARRAY",
-      items: {
-        type: "OBJECT",
-        properties: { fullName: { type: "STRING" } },
-        required: ["fullName"],
-      },
-    },
-  },
-  required: ["students"],
-};
 
 const PROMPT = [
   "You read photos of a class student roster (Kundalik-style school journal screenshots).",
@@ -96,33 +78,37 @@ const PROMPT = [
   "- If the same name appears in more than one image, output it only once.",
   "- Include a name only if you can actually read it. Never invent, guess or complete names, and never pad the list with blanks.",
   "- If no student name can be read, return an empty list.",
+  "",
+  'Return ONLY valid JSON in this exact format, with no extra text, no markdown, no explanation:',
+  '{ "students": ["Surname FirstName", "Surname FirstName2", ...] }',
 ].join("\n");
 
 function errorResponse(message, status, code) {
   return NextResponse.json({ error: message, code }, { status });
 }
 
-function parseGeminiPayload(json) {
-  const parts = json?.candidates?.[0]?.content?.parts;
-  if (!Array.isArray(parts)) return null;
+/**
+ * Parse the text returned by the model.
+ * Handles raw JSON as well as ```json ... ``` fences the model may add.
+ *
+ * @param {string} text
+ * @returns {{ students: string[] } | null}
+ */
+function parseModelText(text) {
+  if (typeof text !== "string") return null;
 
-  const textParts = parts
-    .filter((part) => typeof part?.text === "string" && !part?.thought)
-    .map((part) => part.text);
+  // Strip optional ```json ... ``` or ``` ... ``` fences.
+  let cleaned = text
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
 
-  let text = textParts.join("").trim();
-  if (!text) {
-    text = parts.map((part) => part?.text || "").join("").trim();
-  }
-
-  if (!text) return null;
-
-  text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-
+  // Try the whole cleaned string first.
   try {
-    return JSON.parse(text);
+    return JSON.parse(cleaned);
   } catch {
-    const match = text.match(/\{[\s\S]*\}/);
+    // Fall back: find the first {...} block in the response.
+    const match = cleaned.match(/\{[\s\S]*\}/);
     if (match) {
       try {
         return JSON.parse(match[0]);
@@ -134,20 +120,41 @@ function parseGeminiPayload(json) {
   }
 }
 
-async function fileToInlinePart(file) {
-  const buffer = Buffer.from(await file.arrayBuffer());
-  return {
-    inlineData: { mimeType: file.type, data: buffer.toString("base64") },
-  };
+/**
+ * Build an OpenAI-compatible multimodal user message:
+ * system prompt text + one image_url content part per screenshot.
+ *
+ * @param {{ mimeType: string; base64: string }[]} images
+ * @returns {object[]} messages array
+ */
+function buildMessages(images) {
+  const content = [
+    { type: "text", text: PROMPT },
+    ...images.map(({ mimeType, base64 }) => ({
+      type: "image_url",
+      image_url: { url: `data:${mimeType};base64,${base64}` },
+    })),
+  ];
+
+  return [{ role: "user", content }];
 }
 
 export async function POST(request) {
   // 1. Authentication first: an unauthenticated or invalid caller must never
-  //    reach Gemini, and must not learn anything about the server config.
+  //    reach OpenRouter, and must not learn anything about the server config.
   let user;
   try {
     user = await requireAuth(request);
   } catch (error) {
+    if (error instanceof ConfigError || error?.name === "ConfigError") {
+      console.error("Firebase Admin configuration is missing:", error.message);
+      return errorResponse(
+        "Server konfiguratsiyasi yetarli emas. FIREBASE_PROJECT_ID yoki NEXT_PUBLIC_FIREBASE_PROJECT_ID sozlanmagan.",
+        500,
+        "firebase_config_missing"
+      );
+    }
+
     if (error instanceof AuthError || error?.name === "AuthError") {
       const missing = error.message === "missing_token";
       return errorResponse(
@@ -158,6 +165,7 @@ export async function POST(request) {
         missing ? "missing_token" : "invalid_token"
       );
     }
+
     console.error("Firebase Admin token verification failed:", error);
     return errorResponse("Avtorizatsiyani tekshirib bo'lmadi.", 500, "auth_unavailable");
   }
@@ -171,15 +179,17 @@ export async function POST(request) {
     );
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  // 3. Validate the API key is present (server-side only, never logged).
+  const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     return errorResponse(
-      "Gemini kaliti sozlanmagan. GEMINI_API_KEY environment o'zgaruvchisini to'ldiring.",
+      "OpenRouter kaliti sozlanmagan. OPENROUTER_API_KEY environment o'zgaruvchisini to'ldiring.",
       500,
       "missing_api_key"
     );
   }
 
+  // 4. Parse the multipart form.
   let formData;
   try {
     formData = await request.formData();
@@ -213,90 +223,126 @@ export async function POST(request) {
     }
   }
 
-  let imageParts;
+  // 5. Convert images to base64 for the OpenAI multimodal format.
+  let images;
   try {
-    imageParts = await Promise.all(files.map(fileToInlinePart));
+    images = await Promise.all(
+      files.map(async (file) => {
+        const buffer = Buffer.from(await file.arrayBuffer());
+        return { mimeType: file.type, base64: buffer.toString("base64") };
+      })
+    );
   } catch {
     return errorResponse("Rasmni o'qib bo'lmadi.", 400, "unreadable_image");
   }
 
-  const body = {
-    contents: [
-      {
-        role: "user",
-        parts: [{ text: PROMPT }, ...imageParts],
-      },
-    ],
-    generationConfig: {
-      temperature: 0,
-      responseMimeType: "application/json",
-      responseSchema: RESPONSE_SCHEMA,
-    },
+  // 6. Call OpenRouter.
+  const requestBody = {
+    model: OPENROUTER_MODEL,
+    temperature: 0,
+    messages: buildMessages(images),
+    // NOTE: response_format is intentionally omitted — the free Nemotron
+    // endpoint does not support it. We parse the plain-text response instead.
   };
 
-  const models = [process.env.GEMINI_MODEL, DEFAULT_MODEL, ...FALLBACK_MODELS].filter(
-    (model, index, all) => model && all.indexOf(model) === index
-  );
-
-  let lastError = null;
-
-  for (const model of models) {
-    let response;
-    try {
-      response = await fetch(`${GEMINI_ENDPOINT}/${model}:generateContent`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-        body: JSON.stringify(body),
-      });
-    } catch {
-      lastError = { status: 503, message: "Gemini serveriga ulanib bo'lmadi." };
-      continue;
-    }
-
-    if (!response.ok) {
-      // 404 = model retired for this key, 429 = rate limited, 503 = saturated.
-      // All are worth retrying on the next candidate model.
-      const detail = await response.text().catch(() => "");
-      const isRateLimit = response.status === 429;
-      lastError = {
-        status: response.status,
-        message: isRateLimit
-          ? "Gemini limitiga yetildi. Bir ozdan so'ng qayta urinib ko'ring."
-          : `Gemini so'rovi muvaffaqiyatsiz bo'ldi (${response.status}).`,
-        detail,
-      };
-      continue;
-    }
-
-    const json = await response.json().catch(() => null);
-    const parsed = parseGeminiPayload(json);
-
-    if (!parsed || !Array.isArray(parsed.students)) {
-      lastError = {
-        status: 502,
-        message: "Gemini javobini tushunib bo'lmadi.",
-        detail: JSON.stringify(json).slice(0, 500),
-      };
-      continue;
-    }
-
-    const fullNames = normalizeStudentNames(parsed.students.map((student) => student?.fullName));
-
-    return NextResponse.json({ students: fullNames.map((fullName) => ({ fullName })) });
+  let response;
+  try {
+    response = await fetch(OPENROUTER_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        "HTTP-Referer": "https://ustozdaftar.uz",
+        "X-Title": "UstozDaftar",
+      },
+      body: JSON.stringify(requestBody),
+    });
+  } catch (error) {
+    console.error("[OpenRouter upstream] network error", { model: OPENROUTER_MODEL, error: error?.message || String(error) });
+    return NextResponse.json(
+      {
+        error: "OpenRouter serveriga ulanib bo'lmadi.",
+        code: "openrouter_error",
+        upstreamStatus: 503,
+        upstreamMessage: "OpenRouter serveriga ulanib bo'lmadi.",
+        model: OPENROUTER_MODEL,
+      },
+      { status: 503 }
+    );
   }
 
-  // Preserve upstream error status code (e.g. 429, 502, 503) instead of masking all errors behind 500.
-  // Never leak the API key.
-  const status =
-    lastError?.status && lastError.status >= 400 && lastError.status < 600
-      ? lastError.status === 404
-        ? 502
-        : lastError.status
-      : 500;
+  // 7. Propagate real upstream HTTP errors (400, 401, 429, 502, 503, …).
+  if (!response.ok) {
+    const rawBody = await response.text().catch(() => "");
 
-  return errorResponse(
-    lastError?.message || "Gemini xatosi yuz berdi. Qayta urinib ko'ring.",
-    status,
-    "gemini_error"
-  );
+    let upstreamMessage = `OpenRouter so'rovi muvaffaqiyatsiz bo'ldi (${response.status}).`;
+    try {
+      const parsed = JSON.parse(rawBody || "{}");
+      const msg = parsed?.error?.message || parsed?.message;
+      if (typeof msg === "string" && msg.trim()) upstreamMessage = msg;
+    } catch {
+      // Non-JSON body — keep the generic message.
+    }
+
+    console.error("[OpenRouter upstream] request failed", {
+      model: OPENROUTER_MODEL,
+      upstreamStatus: response.status,
+      upstreamBody: rawBody.slice(0, 1200),
+    });
+
+    return NextResponse.json(
+      {
+        error: upstreamMessage,
+        code: "openrouter_error",
+        upstreamStatus: response.status,
+        upstreamMessage: rawBody.slice(0, 1200) || upstreamMessage,
+        model: OPENROUTER_MODEL,
+      },
+      { status: response.status }
+    );
+  }
+
+  // 8. Parse the response.
+  const json = await response.json().catch(() => null);
+  const rawText = json?.choices?.[0]?.message?.content ?? null;
+
+  if (typeof rawText !== "string" || !rawText.trim()) {
+    const detail = JSON.stringify(json || {}).slice(0, 500);
+    console.error("[OpenRouter upstream] empty or missing content", { model: OPENROUTER_MODEL, upstreamBody: detail });
+    return NextResponse.json(
+      {
+        error: "OpenRouter javobida matn yo'q.",
+        code: "openrouter_error",
+        upstreamStatus: 502,
+        upstreamMessage: detail || "OpenRouter javobida matn yo'q.",
+        model: OPENROUTER_MODEL,
+      },
+      { status: 502 }
+    );
+  }
+
+  const parsed = parseModelText(rawText);
+
+  if (!parsed || !Array.isArray(parsed.students)) {
+    console.error("[OpenRouter upstream] invalid payload — could not parse JSON", {
+      model: OPENROUTER_MODEL,
+      rawText: rawText.slice(0, 500),
+    });
+    return NextResponse.json(
+      {
+        error: "OpenRouter javobini tushunib bo'lmadi.",
+        code: "openrouter_error",
+        upstreamStatus: 502,
+        upstreamMessage: rawText.slice(0, 500) || "OpenRouter javobini tushunib bo'lmadi.",
+        model: OPENROUTER_MODEL,
+      },
+      { status: 502 }
+    );
+  }
+
+  // 9. Normalize (remove patronymics, deduplicate, cap at MAX_STUDENTS).
+  //    The model now returns flat strings, not objects, so pass them directly.
+  const fullNames = normalizeStudentNames(parsed.students);
+
+  return NextResponse.json({ students: fullNames.map((fullName) => ({ fullName })) });
 }

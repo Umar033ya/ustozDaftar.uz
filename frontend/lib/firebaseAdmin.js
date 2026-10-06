@@ -29,7 +29,7 @@ function adminAuth() {
 
   const projectId = process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
   if (!projectId) {
-    throw new Error(
+    throw new ConfigError(
       "Firebase project id is not configured. Set FIREBASE_PROJECT_ID (or NEXT_PUBLIC_FIREBASE_PROJECT_ID)."
     );
   }
@@ -45,6 +45,13 @@ export class AuthError extends Error {
   constructor(reason) {
     super(reason);
     this.name = "AuthError";
+  }
+}
+
+export class ConfigError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "ConfigError";
   }
 }
 
