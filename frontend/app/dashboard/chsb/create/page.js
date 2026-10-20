@@ -95,7 +95,7 @@ export default function CreateChSB() {
           ← ChSB ga qaytish
         </Link>
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Yangi ChSB yaratish</h1>
-        <p className="text-gray-600 mt-1 text-sm sm:text-base">ChSB ma'lumotlarini va maksimal ballni kiriting</p>
+        <p className="text-gray-600 mt-1 text-sm sm:text-base">ChSB ma&apos;lumotlarini va maksimal ballni kiriting</p>
       </div>
 
       {/* Form Card */}
@@ -123,7 +123,7 @@ export default function CreateChSB() {
                 <option value="">Sinfni tanlang</option>
                 {classes.map((cls) => (
                   <option key={cls.id} value={cls.id}>
-                    {cls.name} ({cls.academicYear}) - {cls.studentCount || 0} o'quvchi
+                    {cls.name} ({cls.academicYear}) - {cls.studentCount || 0} o&apos;quvchi
                   </option>
                 ))}
               </select>
@@ -164,7 +164,7 @@ export default function CreateChSB() {
 
             <div>
               <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">
-                O'tkazilgan sana
+                O&apos;tkazilgan sana
               </label>
               <input
                 id="date"

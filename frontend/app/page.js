@@ -1,158 +1,327 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
-import Logo from "../components/Logo";
+import Logo from "@/components/Logo";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
+import { useSubscriptionFlow } from "@/components/SubscriptionFlow";
+import { useAuth } from "@/lib/authContext";
+import { useTranslation } from "@/lib/useTranslation";
+
+const FEATURE_CARDS = [
+  { key: "feature.bsb", tone: "blue", icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" },
+  { key: "feature.chsb", tone: "green", icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" },
+  { key: "feature.autoCalc", tone: "blue", icon: "M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" },
+  { key: "feature.excelExport", tone: "green", icon: "M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" },
+  { key: "feature.charts", tone: "blue", icon: "M11 3.055A9.001 9.001 0 1020.945 13H11V3.055zM20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" },
+  { key: "feature.printReady", tone: "green", icon: "M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" },
+];
+
+const STEPS = ["steps.step1", "steps.step2", "steps.step3"];
 
 export default function Home() {
+  const { currentUser } = useAuth();
+  const { t } = useTranslation();
+  const { openPurchase, dialogs } = useSubscriptionFlow();
+  const [period, setPeriod] = useState("monthly");
+
+  const plans = [
+    {
+      id: "free",
+      name: t("pricing.free.name"),
+      tagline: t("pricing.free.tagline"),
+      price: t("pricing.amount.free"),
+      periodLabel: t("pricing.period.forever"),
+      features: t("pricing.free.features"),
+      featuresKey: "pricing.free.features",
+      highlight: false,
+      purchasable: false,
+    },
+    {
+      id: "pro",
+      name: t("pricing.pro.name"),
+      tagline: t("pricing.pro.tagline"),
+      price: period === "yearly" ? t("pricing.amount.proYearly") : t("pricing.amount.proMonthly"),
+      periodLabel: "",
+      featuresKey: "pricing.pro.features",
+      highlight: true,
+      purchasable: true,
+    },
+    {
+      id: "max",
+      name: t("pricing.max.name"),
+      tagline: t("pricing.max.tagline"),
+      price: period === "yearly" ? t("pricing.amount.maxYearly") : t("pricing.amount.maxMonthly"),
+      periodLabel: "",
+      featuresKey: "pricing.max.features",
+      highlight: false,
+      purchasable: true,
+    },
+  ];
+
+  // Anyone can see the plan details and the manual payment instructions. The
+  // payment request itself still requires a signed-in account.
+  const handlePurchase = (planId) => {
+    openPurchase(planId, period);
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
       {/* Navbar */}
-      <nav className="bg-white shadow-sm">
+      <nav className="bg-white shadow-sm sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-3">
+            <Link href="/" className="flex items-center gap-3">
               <Logo size="default" />
               <div>
                 <h1 className="text-xl font-bold text-gray-900">UstozDaftar.uz</h1>
-                <p className="text-xs text-gray-500">BSB & ChSB Avtomatlashtirish</p>
+                <p className="text-xs text-gray-500">{t("app.tagline")}</p>
               </div>
-            </div>
-            <div className="hidden md:flex items-center gap-8">
-              <a href="#" className="text-gray-700 hover:text-blue-600 font-medium">Bosh sahifa</a>
-              <a href="#features" className="text-gray-700 hover:text-blue-600 font-medium">Imkoniyatlar</a>
-              <a href="#how-it-works" className="text-gray-700 hover:text-blue-600 font-medium">Qanday ishlaydi</a>
-              <Link href="/login" className="text-gray-700 hover:text-blue-600 font-medium">Kirish</Link>
-              <Link href="/register" className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-medium">
-                Ro'yxatdan o'tish
-              </Link>
+            </Link>
+            <div className="flex items-center gap-4">
+              <div className="hidden md:flex items-center gap-6">
+                <a href="#features" className="text-gray-700 hover:text-blue-600 font-medium">
+                  {t("nav.features")}
+                </a>
+                <a href="#how-it-works" className="text-gray-700 hover:text-blue-600 font-medium">
+                  {t("nav.howItWorks")}
+                </a>
+                <a href="#pricing" className="text-gray-700 hover:text-blue-600 font-medium">
+                  {t("nav.pricing")}
+                </a>
+              </div>
+              <div className="hidden sm:block w-px h-6 bg-gray-200" />
+              <LanguageSwitcher />
+              <div className="hidden sm:flex items-center gap-3">
+                <Link href="/login" className="text-gray-700 hover:text-blue-600 font-medium">
+                  {t("nav.login")}
+                </Link>
+                {currentUser ? (
+                  <Link
+                    href="/dashboard"
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-medium"
+                  >
+                    {t("nav.dashboard")}
+                  </Link>
+                ) : (
+                  <Link
+                    href="/register"
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-medium"
+                  >
+                    {t("nav.register")}
+                  </Link>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </nav>
 
-      {/* Hero Section */}
-      <section className="py-20 bg-gradient-to-b from-blue-50 to-white">
+      {/* Hero */}
+      <section className="py-16 sm:py-20 bg-gradient-to-b from-blue-50 to-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6">
-            BSB va ChSB natijalarini bir necha daqiqada tayyorlang
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-gray-900 mb-6">
+            {t("home.hero.title")}
           </h1>
-          <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
-            O'qituvchilar ballarni bir marta kiritish orqali avtomatik ravishda jami ball, foiz, sinf statistikasi, diagrammalar, Excel export va chop etishga tayyor jadval olishlari mumkin.
-          </p>
+          <p className="text-lg sm:text-xl text-gray-600 mb-8 max-w-3xl mx-auto">{t("home.hero.subtitle")}</p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/register" className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 font-medium text-lg">
-              Boshlash
+            <Link
+              href="/register"
+              className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 font-medium text-lg"
+            >
+              {t("home.hero.start")}
             </Link>
-            <Link href="/login" className="bg-white text-blue-600 px-8 py-3 rounded-lg border-2 border-blue-600 hover:bg-blue-50 font-medium text-lg">
-              Kirish
+            <Link
+              href="/login"
+              className="bg-white text-blue-600 px-8 py-3 rounded-lg border-2 border-blue-600 hover:bg-blue-50 font-medium text-lg"
+            >
+              {t("home.hero.login")}
             </Link>
           </div>
         </div>
       </section>
 
-      {/* Features Section */}
-      <section id="features" className="py-20 bg-white">
+      {/* Features */}
+      <section id="features" className="py-16 sm:py-20 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">Imkoniyatlar</h2>
+          <h2 className="text-2xl sm:text-3xl font-bold text-center text-gray-900 mb-12">
+            {t("home.features.title")}
+          </h2>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">BSB natijalari</h3>
-              <p className="text-gray-600">BSB natijalarini tez va oson kiritish va hisoblash</p>
-            </div>
-            <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">ChSB natijalari</h3>
-              <p className="text-gray-600">ChSB natijalarini avtomatik hisoblash</p>
-            </div>
-            <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Avtomatik hisob-kitob</h3>
-              <p className="text-gray-600">Jami ball va foizlarni avtomatik hisoblash</p>
-            </div>
-            <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Excel export</h3>
-              <p className="text-gray-600">Natijalarni Excel formatida yuklab olish</p>
-            </div>
-            <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Diagrammalar</h3>
-              <p className="text-gray-600">Sinf statistikasi uchun diagrammalar</p>
-            </div>
-            <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Chop etishga tayyor jadval</h3>
-              <p className="text-gray-600">Jadvallarni darhol chop etish uchun tayyor</p>
-            </div>
+            {FEATURE_CARDS.map((card) => {
+              const titleKey = card.key;
+              const descKey = `${card.key}.desc`;
+              return (
+                <div key={card.key} className="bg-gray-50 p-6 rounded-xl border border-gray-200">
+                  <div
+                    className={`w-12 h-12 rounded-lg flex items-center justify-center mb-4 ${
+                      card.tone === "blue" ? "bg-blue-100" : "bg-green-100"
+                    }`}
+                  >
+                    <svg
+                      className={`w-6 h-6 ${card.tone === "blue" ? "text-blue-600" : "text-green-600"}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={card.icon} />
+                    </svg>
+                  </div>
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">{t(titleKey)}</h3>
+                  <p className="text-gray-600">{t(descKey)}</p>
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
 
       {/* How it works */}
-      <section id="how-it-works" className="py-20 bg-gray-50">
+      <section id="how-it-works" className="py-16 sm:py-20 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">Qanday ishlaydi</h2>
+          <h2 className="text-2xl sm:text-3xl font-bold text-center text-gray-900 mb-12">
+            {t("home.howItWorks.title")}
+          </h2>
           <div className="grid md:grid-cols-3 gap-8">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 text-white text-2xl font-bold">1</div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Sinf yarating</h3>
-              <p className="text-gray-600">Sinfingizni va o'qu yilini kiritishingiz mumkin</p>
-            </div>
-            <div className="text-center">
-              <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 text-white text-2xl font-bold">2</div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">O'quvchilarni kiriting</h3>
-              <p className="text-gray-600">O'quvchilarning F.I.Sh. ni qo'shing</p>
-            </div>
-            <div className="text-center">
-              <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 text-white text-2xl font-bold">3</div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">BSB/ChSB natijalarini kiriting</h3>
-              <p className="text-gray-600">Natijalarni kiring va Excel/PDF/print qiling</p>
-            </div>
+            {STEPS.map((step, index) => (
+              <div key={step} className="text-center">
+                <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 text-white text-2xl font-bold">
+                  {index + 1}
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">{t(`${step}.title`)}</h3>
+                <p className="text-gray-600">{t(`${step}.desc`)}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-20 bg-gradient-to-r from-blue-600 to-green-600">
+      {/* CTA */}
+      <section className="py-16 sm:py-20 bg-gradient-to-r from-blue-600 to-green-600">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl font-bold text-white mb-6">Bugun boshlang</h2>
-          <p className="text-xl text-white mb-8">BSB va ChSB natijalarini avtomatlashtirish vaqtingizni tejaydi</p>
-          <Link href="/register" className="bg-white text-blue-600 px-8 py-3 rounded-lg hover:bg-gray-100 font-medium text-lg">
-            Bepul ro'yxatdan o'ting
+          <h2 className="text-2xl sm:text-3xl font-bold text-white mb-6">{t("home.cta.title")}</h2>
+          <p className="text-lg sm:text-xl text-white mb-8">{t("home.cta.subtitle")}</p>
+          <Link
+            href="/register"
+            className="bg-white text-blue-600 px-8 py-3 rounded-lg hover:bg-gray-100 font-medium text-lg"
+          >
+            {t("home.cta.button")}
           </Link>
         </div>
       </section>
 
+      {/* Pricing — placed below the introductory content, above the footer */}
+      <section id="pricing" className="py-16 sm:py-20 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-10">
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3">{t("pricing.title")}</h2>
+            <p className="text-gray-600 max-w-2xl mx-auto">{t("pricing.subtitle")}</p>
+
+            {/* Billing period toggle */}
+            <div className="mt-6 inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
+              {[
+                { id: "monthly", label: t("subscription.monthlyBilling") },
+                { id: "yearly", label: t("subscription.yearlyBilling") },
+              ].map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => setPeriod(option.id)}
+                  className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
+                    period === option.id ? "bg-white text-gray-900 shadow-sm" : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-6 lg:gap-8 items-start">
+            {plans.map((plan) => {
+              const features = t(plan.featuresKey);
+              return (
+                <div
+                  key={plan.id}
+                  className={`relative bg-white rounded-2xl border p-6 flex flex-col h-full ${
+                    plan.highlight ? "border-blue-500 shadow-lg md:-mt-2" : "border-gray-200 shadow-sm"
+                  }`}
+                >
+                  {plan.highlight && (
+                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-xs font-semibold px-3 py-1 rounded-full">
+                      {t("pricing.popular")}
+                    </span>
+                  )}
+
+                  <h3 className="text-lg font-bold text-gray-900">{plan.name}</h3>
+                  <p className="text-sm text-gray-500 mt-1">{plan.tagline}</p>
+
+                  <div className="mt-4 mb-5">
+                    <span className="text-2xl font-bold text-gray-900">{plan.price}</span>
+                    {plan.periodLabel && <span className="text-sm text-gray-500 ml-1">{plan.periodLabel}</span>}
+                  </div>
+
+                  <ul className="space-y-2.5 flex-1">
+                    {(Array.isArray(features) ? features : []).map((feature, index) => (
+                      <li key={index} className="flex items-start gap-2">
+                        <svg
+                          className={`h-4 w-4 flex-shrink-0 mt-0.5 ${
+                            plan.id === "max" ? "text-purple-600" : plan.id === "pro" ? "text-blue-600" : "text-gray-500"
+                          }`}
+                          fill="currentColor"
+                          viewBox="0 0 20 20"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l4-4a1 1 0 011.414 0z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                        <span className="text-sm text-gray-700">{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div className="mt-6">
+                    {plan.purchasable ? (
+                      <button
+                        type="button"
+                        onClick={() => handlePurchase(plan.id)}
+                        className={`w-full rounded-lg py-2.5 text-sm font-medium text-white transition-colors ${
+                          plan.id === "max" ? "bg-purple-600 hover:bg-purple-700" : "bg-blue-600 hover:bg-blue-700"
+                        }`}
+                      >
+                        {t("subscription.purchasePlan", { plan: plan.name })}
+                      </button>
+                    ) : (
+                      <Link
+                        href={currentUser ? "/dashboard" : "/register"}
+                        className="block w-full text-center rounded-lg border border-gray-300 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                      >
+                        {currentUser ? t("nav.dashboard") : t("home.hero.start")}
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <p className="mt-8 text-center text-xs text-gray-500">{t("paymentModal.instructionText")}</p>
+        </div>
+      </section>
+
       {/* Footer */}
-      <footer className="bg-gray-900 text-white py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <p className="text-gray-400">&copy; 2024 UstozDaftar.uz - Barcha huquqlar himoyalangan</p>
+      <footer className="bg-gray-900 text-white py-8 mt-auto">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p className="text-gray-400 text-sm text-center sm:text-left">{t("home.footer")}</p>
+            <LanguageSwitcher variant="dark" />
+          </div>
         </div>
       </footer>
+
+      {dialogs}
     </div>
   );
 }

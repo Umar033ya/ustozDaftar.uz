@@ -18,9 +18,19 @@ export default function CreateBSB() {
     date: "",
     numberOfTasks: 5,
   });
-  const [tasks, setTasks] = useState([]);
+  // Max scores the teacher edited, keyed by task number. The task list itself is
+  // derived from `numberOfTasks` during render, so it never needs an effect.
+  const [taskOverrides, setTaskOverrides] = useState({});
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  const parsedTaskCount = parseInt(formData.numberOfTasks, 10);
+  const taskCount = Math.min(20, Math.max(1, Number.isNaN(parsedTaskCount) ? 1 : parsedTaskCount));
+  const tasks = Array.from({ length: taskCount }, (_, index) => {
+    const number = index + 1;
+    const override = taskOverrides[number];
+    return { number, maxScore: override !== undefined ? override : 3 };
+  });
 
   useEffect(() => {
     if (!currentUser) return;
@@ -34,19 +44,6 @@ export default function CreateBSB() {
       });
   }, [currentUser]);
 
-  useEffect(() => {
-    const num = Math.min(20, Math.max(1, parseInt(formData.numberOfTasks) || 1));
-    const newTasks = [];
-    for (let i = 1; i <= num; i++) {
-      newTasks.push({
-        number: i,
-        maxScore: tasks[i - 1]?.maxScore !== undefined ? tasks[i - 1].maxScore : 3,
-      });
-    }
-    setTasks(newTasks);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.numberOfTasks]);
-
   const handleChange = (e) => {
     setFormData({
       ...formData,
@@ -55,11 +52,8 @@ export default function CreateBSB() {
   };
 
   const handleTaskChange = (taskNumber, maxScore) => {
-    setTasks(
-      tasks.map((task) =>
-        task.number === taskNumber ? { ...task, maxScore: Math.max(0, parseInt(maxScore) || 0) } : task
-      )
-    );
+    const value = Math.max(0, parseInt(maxScore, 10) || 0);
+    setTaskOverrides((prev) => ({ ...prev, [taskNumber]: value }));
   };
 
   const handleSubmit = async (e) => {
@@ -120,7 +114,7 @@ export default function CreateBSB() {
           ← BSB ga qaytish
         </Link>
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Yangi BSB yaratish</h1>
-        <p className="text-gray-600 mt-1 text-sm sm:text-base">BSB ma'lumotlarini kiriting va topshiriqlarni sozlang</p>
+        <p className="text-gray-600 mt-1 text-sm sm:text-base">BSB ma&apos;lumotlarini kiriting va topshiriqlarni sozlang</p>
       </div>
 
       {/* Form Card */}
@@ -148,7 +142,7 @@ export default function CreateBSB() {
                 <option value="">Sinfni tanlang</option>
                 {classes.map((cls) => (
                   <option key={cls.id} value={cls.id}>
-                    {cls.name} ({cls.academicYear}) - {cls.studentCount || 0} o'quvchi
+                    {cls.name} ({cls.academicYear}) - {cls.studentCount || 0} o&apos;quvchi
                   </option>
                 ))}
               </select>
@@ -189,7 +183,7 @@ export default function CreateBSB() {
 
             <div>
               <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">
-                O'tkazilgan sana
+                O&apos;tkazilgan sana
               </label>
               <input
                 id="date"

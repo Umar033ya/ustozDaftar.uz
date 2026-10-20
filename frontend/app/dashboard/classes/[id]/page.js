@@ -230,7 +230,7 @@ export default function ClassDetail() {
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
-            O'quvchi qo'shish
+            O&apos;quvchi qo&apos;shish
           </button>
         </div>
       </div>
@@ -245,7 +245,7 @@ export default function ClassDetail() {
       {/* Add Student Form */}
       {showAddStudentForm && (
         <div className="bg-white rounded-xl shadow-xs p-5 sm:p-6 border border-gray-200 mb-6 sm:mb-8">
-          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4">Yangi o'quvchi qo'shish</h2>
+          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4">Yangi o&apos;quvchi qo&apos;shish</h2>
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
               {error}
@@ -312,7 +312,7 @@ export default function ClassDetail() {
       <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
         <div className="p-4 sm:p-6 border-b border-gray-200 flex items-center justify-between">
           <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
-            O'quvchilar ro'yxati ({students.length})
+            O&apos;quvchilar ro&apos;yxati ({students.length})
           </h2>
         </div>
         
@@ -321,13 +321,13 @@ export default function ClassDetail() {
             <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
             </svg>
-            <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">O'quvchi yo'q</h3>
-            <p className="text-gray-600 mb-5 text-sm">Hali o'quvchi qo'shmadingiz. Birinchi o'quvchingizni qo'shing.</p>
+            <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">O&apos;quvchi yo&apos;q</h3>
+            <p className="text-gray-600 mb-5 text-sm">Hali o&apos;quvchi qo&apos;shmadingiz. Birinchi o&apos;quvchingizni qo&apos;shing.</p>
             <button
               onClick={() => setShowAddStudentForm(true)}
               className="bg-blue-600 text-white px-5 py-2.5 rounded-lg hover:bg-blue-700 font-medium text-sm transition-colors"
             >
-              O'quvchi qo'shish
+              O&apos;quvchi qo&apos;shish
             </button>
           </div>
         ) : (
@@ -399,7 +399,7 @@ export default function ClassDetail() {
                             onClick={() => handleDeleteStudent(student.id)}
                             className="text-red-600 hover:text-red-800 text-xs sm:text-sm font-semibold transition-colors"
                           >
-                            O'chirish
+                            O&apos;chirish
                           </button>
                         </div>
                       )}

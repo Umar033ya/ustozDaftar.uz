@@ -109,25 +109,36 @@ export default function Settings() {
   const [migrationStatus, setMigrationStatus] = useState("");
   const [migrationSuccess, setMigrationSuccess] = useState(false);
 
-  useEffect(() => {
-    if (userProfile?.schoolName) {
-      setSchoolName(userProfile.schoolName);
-    }
-  }, [userProfile]);
+  // Seed the editable forms from the loaded profile with React's "adjust state
+  // during render" pattern. Each field is tracked separately so editing one form
+  // is never clobbered by an unrelated profile update.
+  const nameSeed = `${userProfile?.firstName || ""}\u0000${userProfile?.lastName || ""}`;
+  const emailSeed = currentUser?.email || "";
+  const schoolSeed = userProfile?.schoolName || "";
+  const [seeds, setSeeds] = useState({ name: null, email: null, school: null });
 
-  useEffect(() => {
+  if (seeds.name !== nameSeed) {
+    setSeeds((prev) => ({ ...prev, name: nameSeed }));
     setNameForm({
       firstName: userProfile?.firstName || "",
       lastName: userProfile?.lastName || "",
     });
-  }, [userProfile?.firstName, userProfile?.lastName]);
+  }
+
+  if (seeds.email !== emailSeed) {
+    setSeeds((prev) => ({ ...prev, email: emailSeed }));
+    setEmailForm(emailSeed);
+  }
+
+  if (seeds.school !== schoolSeed) {
+    setSeeds((prev) => ({ ...prev, school: schoolSeed }));
+    setSchoolName(schoolSeed);
+  }
 
   useEffect(() => {
-    setEmailForm(currentUser?.email || "");
-  }, [currentUser?.email]);
-
-  useEffect(() => {
-    // Detect legacy data and immediately drop the old fake-auth keys (they may hold plain passwords)
+    // Detect legacy data and immediately drop the old fake-auth keys (they may hold plain passwords).
+    // Reading localStorage is an external-system subscription and must happen after
+    // mount (localStorage does not exist during SSR), so the state update belongs here.
     const classes = readLegacyArray(LEGACY_KEYS.classes);
     const assessments = readLegacyArray(LEGACY_KEYS.assessments);
     const hasAuthKeys = Boolean(
@@ -139,6 +150,7 @@ export default function Settings() {
       localStorage.removeItem(LEGACY_KEYS.user);
     }
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time mount read of localStorage
     setLegacyInfo({
       hasData: classes.items.length > 0 || assessments.items.length > 0 || hasAuthKeys,
       hadAuthKeys: hasAuthKeys,
@@ -531,7 +543,7 @@ export default function Settings() {
       {/* Header */}
       <div className="mb-6 sm:mb-8">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Sozlamalar</h1>
-        <p className="text-gray-600 mt-1 text-sm sm:text-base">Hisob, maktab ma'lumotlari va ma'lumotlarni boshqarish</p>
+        <p className="text-gray-600 mt-1 text-sm sm:text-base">Hisob, maktab ma&apos;lumotlari va ma&apos;lumotlarni boshqarish</p>
       </div>
 
       <div className="max-w-3xl space-y-6">
@@ -734,7 +746,7 @@ export default function Settings() {
 
         {/* School Settings */}
         <div className="bg-white rounded-xl shadow-xs p-5 sm:p-6 border border-gray-200">
-          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4">Maktab ma'lumotlari</h2>
+          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4">Maktab ma&apos;lumotlari</h2>
           <div className="space-y-4">
             <div>
               <label htmlFor="schoolName" className="block text-sm font-medium text-gray-700 mb-1">
@@ -772,10 +784,10 @@ export default function Settings() {
         {/* Firebase Data Migration Tool */}
         <div className="bg-white rounded-xl shadow-xs p-5 sm:p-6 border border-blue-200 bg-blue-50/20">
           <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">
-            Lokal ma'lumotlarni ko'chirish (Migration Tool)
+            Lokal ma&apos;lumotlarni ko&apos;chirish (Migration Tool)
           </h2>
           <p className="text-gray-600 text-sm mb-4">
-            Agar siz muqaddam ushbu brauzerda (localStorage) sinflar, o'quvchilar yoki BSB/ChSB yaratgan bo'lsangiz, ularni bir bosish bilan Firebase shaxsiy hisobingizga ko'chirishingiz mumkin.
+            Agar siz muqaddam ushbu brauzerda (localStorage) sinflar, o&apos;quvchilar yoki BSB/ChSB yaratgan bo&apos;lsangiz, ularni bir bosish bilan Firebase shaxsiy hisobingizga ko&apos;chirishingiz mumkin.
           </p>
 
           {migrationStatus && (
@@ -792,14 +804,14 @@ export default function Settings() {
 
           {legacyInfo.hadAuthKeys && (
             <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg mb-4 text-sm">
-              Eski versiyadagi mahalliy hisob ma'lumotlari (ochiq parol saqlangan bo'lishi mumkin) bu
-              brauzerdan butunlay o'chirildi. Parollar endi faqat Firebase orqali saqlanadi.
+              Eski versiyadagi mahalliy hisob ma&apos;lumotlari (ochiq parol saqlangan bo&apos;lishi mumkin) bu
+              brauzerdan butunlay o&apos;chirildi. Parollar endi faqat Firebase orqali saqlanadi.
             </div>
           )}
 
           {legacyInfo.corrupt && (
             <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg mb-4 text-sm">
-              Ba'zi lokal ma'lumotlar buzilgan va o'qib bo'lmadi. Buzilgan qismi import qilinmadi.
+              Ba&apos;zi lokal ma&apos;lumotlar buzilgan va o&apos;qib bo&apos;lmadi. Buzilgan qismi import qilinmadi.
             </div>
           )}
 
@@ -816,7 +828,7 @@ export default function Settings() {
             </button>
           ) : (
             <p className="text-xs text-emerald-600 font-semibold bg-emerald-50 border border-emerald-200 p-3 rounded-lg">
-              ✓ Brauzerda ko'chirilishi kerak bo'lgan lokal ma'lumotlar mavjud emas. Barcha ma'lumotlaringiz Firebase bilan xavfsiz bog'langan.
+              ✓ Brauzerda ko&apos;chirilishi kerak bo&apos;lgan lokal ma&apos;lumotlar mavjud emas. Barcha ma&apos;lumotlaringiz Firebase bilan xavfsiz bog&apos;langan.
             </p>
           )}
         </div>

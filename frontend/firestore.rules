@@ -1,9 +1,82 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+    function isSignedIn() {
+      return request.auth != null;
     }
+
+    // The `admin` claim is assigned by the server (Firebase Auth custom claims),
+    // never by a client write, so it is safe to trust here.
+    function isAdmin() {
+      return request.auth != null && request.auth.token.admin == true;
+    }
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // Profile, class and assessment data for a teacher lives in users/{uid}.
+    match /users/{uid} {
+      // A user can read only their own profile document.
+      allow read: if isOwner(uid);
+
+      // A user can create their own profile, but must not provision a paid
+      // plan/expiry or any privileged flag for themselves.
+      allow create: if isOwner(uid)
+        && !request.resource.data.keys().hasAny(['plan', 'planExpiry', 'admin', 'isAdmin', 'role']);
+
+      // A user may edit their own profile and data, but must never change their
+      // own subscription plan/expiry or any privileged flag.
+      allow update: if isOwner(uid)
+        && !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['plan', 'planExpiry', 'admin', 'isAdmin', 'role']);
+
+      // Subscription activation: only an admin may update the plan fields,
+      // and only those two fields.
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['plan', 'planExpiry']);
+
+      // Deleting a profile is an administrative action only.
+      allow delete: if false;
+    }
+
+    // Payment requests collection
+    match /paymentRequests/{requestId} {
+      // Only authenticated users can create their own requests. Must include
+      // their own uid, userName, userEmail, plan, billingPeriod, amount,
+      // cardLastFour, cardholderName, paymentDateTime. Status must be "pending"
+      // on create.
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.plan in ['pro', 'max']
+        && request.resource.data.billingPeriod in ['monthly', 'yearly']
+        && request.resource.data.cardLastFour is string
+        && request.resource.data.cardLastFour.size() == 4
+        && request.resource.data.cardholderName is string
+        && request.resource.data.paymentDateTime is string
+        && request.resource.data.amount is string
+        && request.resource.data.userName is string
+        && request.resource.data.userEmail is string;
+
+      // Read: users can read their own requests, admins can read all.
+      allow read: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+
+      // Admin review: only an admin (server-assigned `admin` claim) other than
+      // the requester can move a still-pending request to approved/rejected,
+      // and only the status/bookkeeping fields may change.
+      allow update: if isAdmin()
+        && resource.data.uid != request.auth.uid
+        && resource.data.status == 'pending'
+        && request.resource.data.status in ['approved', 'rejected']
+        && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['status', 'processedAt', 'processedBy']);
+
+      // Delete: nobody deletes payment requests through the client.
+      allow delete: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

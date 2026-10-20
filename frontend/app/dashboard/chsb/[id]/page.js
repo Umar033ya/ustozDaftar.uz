@@ -197,7 +197,7 @@ export default function ChSBResult() {
       {/* Top Controls & Navigation */}
       <div className="mb-4 sm:mb-6 print:hidden">
         <Link href="/dashboard/chsb" className="text-blue-600 hover:text-blue-700 text-sm font-medium mb-2 inline-block">
-          ← ChSB ro'yxatiga qaytish
+          ← ChSB ro&apos;yxatiga qaytish
         </Link>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -237,7 +237,7 @@ export default function ChSBResult() {
         {/* Official School Title Header */}
         <div className="mb-4 sm:mb-6 text-center border-b-2 border-gray-900 pb-3">
           <h2 className="text-base sm:text-lg md:text-xl font-extrabold text-gray-900 tracking-tight leading-snug">
-            {schoolName || "Maktab"}ning {assessment.className}-sinf o'quvchilarining {assessment.subject} fanidan {assessment.academicYear}-o'quv yili {assessment.number}-ChSB natijalari ({assessment.date})
+            {schoolName || "Maktab"}ning {assessment.className}-sinf o&apos;quvchilarining {assessment.subject} fanidan {assessment.academicYear}-o&apos;quv yili {assessment.number}-ChSB natijalari ({assessment.date})
           </h2>
         </div>
 
@@ -249,15 +249,15 @@ export default function ChSBResult() {
               <p className="text-lg font-bold text-gray-900 mt-0.5">{stats.maxScore}</p>
             </div>
             <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-              <p className="text-xs text-gray-500 font-medium">O'quvchilar</p>
+              <p className="text-xs text-gray-500 font-medium">O&apos;quvchilar</p>
               <p className="text-lg font-bold text-gray-900 mt-0.5">{stats.studentCount}</p>
             </div>
             <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-              <p className="text-xs text-gray-500 font-medium">O'rtacha ball</p>
+              <p className="text-xs text-gray-500 font-medium">O&apos;rtacha ball</p>
               <p className="text-lg font-bold text-gray-900 mt-0.5">{stats.averageScore}</p>
             </div>
             <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-              <p className="text-xs text-gray-500 font-medium">O'rtacha %</p>
+              <p className="text-xs text-gray-500 font-medium">O&apos;rtacha %</p>
               <p className="text-lg font-bold text-gray-900 mt-0.5">{stats.averagePercentage}%</p>
             </div>
             <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-200">
@@ -355,7 +355,7 @@ export default function ChSBResult() {
               <tfoot className="bg-gray-100 font-bold border-t-2 border-gray-400 text-gray-900">
                 <tr>
                   <td colSpan={2} className="px-3 py-2.5 border border-gray-300 text-center text-xs sm:text-sm font-extrabold uppercase">
-                    O'rtacha ko'rsatkich
+                    O&apos;rtacha ko&apos;rsatkich
                   </td>
                   <td className="px-3 py-2.5 border border-gray-300 text-center font-extrabold text-blue-700 bg-gray-200">
                     {stats.averageScore}

@@ -4,11 +4,24 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Logo from "@/components/Logo";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { useAuth } from "@/lib/authContext";
+import { useTranslation } from "@/lib/useTranslation";
+
+const AUTH_ERRORS = {
+  "auth/email-already-in-use": "register.error.emailInUse",
+  "auth/invalid-email": "register.error.invalidEmail",
+  "auth/weak-password": "register.error.weakPassword",
+};
+
+function getErrorMessage(err) {
+  return AUTH_ERRORS[err?.code] || "register.error.system";
+}
 
 export default function Register() {
   const router = useRouter();
   const { register } = useAuth();
+  const { t } = useTranslation();
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -30,32 +43,30 @@ export default function Register() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError("");
-
-    if (
+    setError("");      if (
       !formData.firstName.trim() ||
       !formData.lastName.trim() ||
       !formData.email.trim() ||
       !formData.password ||
       !formData.confirmPassword
     ) {
-      setError("Barcha maydonlarni to'ldiring");
+      setError(t("register.error.allFields"));
       return;
     }
 
     if (formData.password !== formData.confirmPassword) {
-      setError("Parollar mos kelmaydi");
+      setError(t("register.error.passwordMismatch"));
       return;
     }
 
     if (formData.password.length < 6) {
-      setError("Parol kamida 6 belgidan iborat bo'lishi kerak");
+      setError(t("register.error.shortPassword"));
       return;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email.trim())) {
-      setError("To'g'ri email manzil kiriting");
+      setError(t("register.error.invalidEmail"));
       return;
     }
 
@@ -71,18 +82,11 @@ export default function Register() {
       router.push("/dashboard");
     } catch (err) {
       console.error("Register error:", err);
-      if (err.code === "auth/email-already-in-use") {
-        setError("Ushbu email bilan allaqachon ro'yxatdan o'tilgan");
-      } else if (err.code === "auth/invalid-email") {
-        setError("Noto'g'ri email manzil kiritildi");
-      } else if (err.code === "auth/weak-password") {
-        setError("Parol juda zaif. Kamida 6 ta belgi kiritishingiz kerak.");
-      } else if (err.message === "PROFILE_CREATE_FAILED") {
-        setError(
-          "Hisob yaratildi, lekin profil yozilmadi. Firebase'da Firestore Security Rules joriy etilganini tekshirib, qayta urinib ko'ring."
-        );
+      const errorKey = getErrorMessage(err);
+      if (err.message === "PROFILE_CREATE_FAILED") {
+        setError(t("register.error.profileFailed"));
       } else {
-        setError("Ro'yxatdan o'tishda xatolik yuz berdi. Qayta urinib ko'ring.");
+        setError(t(errorKey));
       }
     } finally {
       setSubmitting(false);
@@ -95,15 +99,18 @@ export default function Register() {
       <nav className="bg-white shadow-xs border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <Link href="/" className="flex items-center gap-3">
-              <Logo size="default" />
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">UstozDaftar.uz</h1>
-                <p className="text-xs text-gray-500">BSB & ChSB Avtomatlashtirish</p>
-              </div>
-            </Link>
+            <div className="flex items-center gap-3">
+              <Link href="/" className="flex items-center gap-2">
+                <Logo size="default" />
+                <div>
+                  <h1 className="text-xl font-bold text-gray-900">UstozDaftar.uz</h1>
+                  <p className="text-xs text-gray-500">{t("app.tagline")}</p>
+                </div>
+              </Link>
+              <LanguageSwitcher />
+            </div>
             <Link href="/login" className="text-gray-700 hover:text-blue-600 font-medium text-sm">
-              Kirish
+              {t("nav.login")}
             </Link>
           </div>
         </div>
@@ -114,10 +121,10 @@ export default function Register() {
         <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-xs border border-gray-200">
           <div>
             <h2 className="text-center text-2xl sm:text-3xl font-bold text-gray-900">
-              Ro'yxatdan o'tish
+              {t("register.title")}
             </h2>
             <p className="mt-2 text-center text-sm text-gray-600">
-              UstozDaftar.uz tizimida o'z shaxsiy hisobingizni yarating
+              {t("register.subtitle")}
             </p>
           </div>
 
@@ -131,7 +138,7 @@ export default function Register() {
             <div className="space-y-4">
               <div>
                 <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">
-                  Ismingiz
+                  {t("register.firstName")}
                 </label>
                 <input
                   id="firstName"
@@ -141,13 +148,13 @@ export default function Register() {
                   value={formData.firstName}
                   onChange={handleChange}
                   className="mt-1 block w-full px-3.5 py-2.5 border border-gray-300 rounded-lg shadow-xs text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Masalan: Bekzod"
+                  placeholder={t("register.firstName.placeholder")}
                 />
               </div>
 
               <div>
                 <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">
-                  Familiyangiz
+                  {t("register.lastName")}
                 </label>
                 <input
                   id="lastName"
@@ -157,13 +164,13 @@ export default function Register() {
                   value={formData.lastName}
                   onChange={handleChange}
                   className="mt-1 block w-full px-3.5 py-2.5 border border-gray-300 rounded-lg shadow-xs text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Masalan: Karimov"
+                  placeholder={t("register.lastName.placeholder")}
                 />
               </div>
 
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                  Email
+                  {t("register.email")}
                 </label>
                 <input
                   id="email"
@@ -173,13 +180,13 @@ export default function Register() {
                   value={formData.email}
                   onChange={handleChange}
                   className="mt-1 block w-full px-3.5 py-2.5 border border-gray-300 rounded-lg shadow-xs text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="email@example.com"
+                  placeholder={t("register.email.placeholder")}
                 />
               </div>
 
               <div>
                 <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                  Parol
+                  {t("register.password")}
                 </label>
                 <div className="relative mt-1">
                   <input
@@ -190,14 +197,14 @@ export default function Register() {
                     value={formData.password}
                     onChange={handleChange}
                     className="block w-full px-3.5 py-2.5 pr-11 border border-gray-300 rounded-lg shadow-xs text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Kamida 6 belgi"
+                    placeholder={t("register.password.placeholder")}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
                     className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 transition-colors"
-                    title={showPassword ? "Parolni yashirish" : "Parolni ko'rsatish"}
-                    aria-label={showPassword ? "Parolni yashirish" : "Parolni ko'rsatish"}
+                    title={showPassword ? t("register.hidePassword") : t("register.showPassword")}
+                    aria-label={showPassword ? t("register.hidePassword") : t("register.showPassword")}
                     aria-pressed={showPassword}
                   >
                     {showPassword ? (
@@ -216,7 +223,7 @@ export default function Register() {
 
               <div>
                 <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
-                  Parolni tasdiqlash
+                  {t("register.confirmPassword")}
                 </label>
                 <div className="relative mt-1">
                   <input
@@ -227,14 +234,14 @@ export default function Register() {
                     value={formData.confirmPassword}
                     onChange={handleChange}
                     className="block w-full px-3.5 py-2.5 pr-11 border border-gray-300 rounded-lg shadow-xs text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Parolni qayta kiriting"
+                    placeholder={t("register.confirmPassword.placeholder")}
                   />
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword((v) => !v)}
                     className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 transition-colors"
-                    title={showConfirmPassword ? "Parolni yashirish" : "Parolni ko'rsatish"}
-                    aria-label={showConfirmPassword ? "Parolni yashirish" : "Parolni ko'rsatish"}
+                    title={showConfirmPassword ? t("register.hidePassword") : t("register.showPassword")}
+                    aria-label={showConfirmPassword ? t("register.hidePassword") : t("register.showPassword")}
                     aria-pressed={showConfirmPassword}
                   >
                     {showConfirmPassword ? (
@@ -258,15 +265,15 @@ export default function Register() {
                 disabled={submitting}
                 className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-xs text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400"
               >
-                {submitting ? "Ro'yxatdan o'tilmoqda..." : "Ro'yxatdan o'tish"}
+                {submitting ? t("register.submitting") : t("register.submit")}
               </button>
             </div>
 
             <div className="text-center pt-2">
               <p className="text-sm text-gray-600">
-                Allaqachon hisobingiz bormi?{" "}
+                {t("register.loginLink")} {" "}
                 <Link href="/login" className="font-semibold text-blue-600 hover:text-blue-500">
-                  Kirish
+                  {t("nav.login")}
                 </Link>
               </p>
             </div>

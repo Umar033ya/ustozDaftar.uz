@@ -150,7 +150,7 @@ export default function Classes() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 sm:mb-8">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Sinflar</h1>
-          <p className="text-gray-600 mt-1 text-sm sm:text-base">Sinflaringizni va o'quvchilar ro'yxatini boshqaring</p>
+          <p className="text-gray-600 mt-1 text-sm sm:text-base">Sinflaringizni va o&apos;quvchilar ro&apos;yxatini boshqaring</p>
         </div>
         <button
           onClick={() => {
@@ -179,7 +179,7 @@ export default function Classes() {
           </h2>
           {editingClassId && (
             <p className="text-sm text-gray-600 mb-4">
-              Sinf nomi yoki o'quv yilini o'zgartirasiz. O'quvchilar, BSB/ChSB va baholar saqlanib qoladi.
+              Sinf nomi yoki o&apos;quv yilini o&apos;zgartirasiz. O&apos;quvchilar, BSB/ChSB va baholar saqlanib qoladi.
             </p>
           )}
           {error && (
@@ -206,7 +206,7 @@ export default function Classes() {
               </div>
               <div>
                 <label htmlFor="academicYear" className="block text-sm font-medium text-gray-700 mb-1">
-                  O'quv yili
+                  O&apos;quv yili
                 </label>
                 <input
                   id="academicYear"
@@ -248,7 +248,7 @@ export default function Classes() {
           <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
           </svg>
-          <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">Sinf yo'q</h3>
+          <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">Sinf yo&apos;q</h3>
           <p className="text-gray-600 mb-5 text-sm">Hali sinf yaratmadingiz. Birinchi sinfingizni yarating.</p>
           <button
             onClick={() => setShowCreateForm(true)}
@@ -266,7 +266,7 @@ export default function Classes() {
                   <div className="flex-1">
                     <h3 className="text-lg font-semibold text-gray-900">{cls.name}</h3>
                     <p className="text-gray-600 text-sm mt-0.5">{cls.academicYear}</p>
-                    <p className="text-xs text-gray-500 mt-2">{cls.studentCount || 0} o'quvchi</p>
+                    <p className="text-xs text-gray-500 mt-2">{cls.studentCount || 0} o&apos;quvchi</p>
                   </div>
                   <div className="flex items-start gap-1">
                     <button

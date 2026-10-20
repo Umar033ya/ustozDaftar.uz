@@ -13,7 +13,7 @@ export default function TaskAverageChart({ tasks = [], taskAverages = [] }) {
   return (
     <div className="bg-white p-4 sm:p-6 rounded-xl shadow-xs border border-gray-200 print:hidden mb-6">
       <h3 className="text-base font-bold text-gray-900 mb-4">
-        Topshiriqlar bo'yicha o'rtacha o'zlashtirish (%)
+        Topshiriqlar bo&apos;yicha o&apos;rtacha o&apos;zlashtirish (%)
       </h3>
 
       <div className="w-full overflow-x-auto">

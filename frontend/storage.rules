@@ -1,0 +1,21 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Payment receipts: users can only upload to their own path
+    match /payment-receipts/{uid}/{allPaths=**} {
+      // Allow write: only authenticated users can upload to their own folder
+      allow write: if request.auth != null 
+        && request.auth.uid == uid
+        && request.resource.size < 5 * 1024 * 1024 // 5MB max
+        && request.resource.contentType.matches('image/(jpeg|jpg|png|webp)');
+      
+      // Deny read: receipts are private, only accessible via admin SDK
+      allow read: if false;
+    }
+    
+    // Deny all other paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

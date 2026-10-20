@@ -11,9 +11,14 @@ export default function Statistics() {
   const [classes, setClasses] = useState([]);
   const [assessments, setAssessments] = useState([]);
   const [selectedClass, setSelectedClass] = useState("");
-  const [selectedClassStats, setSelectedClassStats] = useState(null);
+  // Stats are stored together with the class they belong to, so switching the
+  // selection can never show another class's numbers without an effect reset.
+  const [classStats, setClassStats] = useState(null);
   const [loadingStats, setLoadingStats] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  const selectedClassStats =
+    classStats && classStats.classId === selectedClass ? classStats.data : null;
 
   useEffect(() => {
     if (!currentUser) return;
@@ -50,10 +55,7 @@ export default function Statistics() {
   }, [currentUser]);
 
   useEffect(() => {
-    if (!selectedClass || !currentUser) {
-      setSelectedClassStats(null);
-      return;
-    }
+    if (!selectedClass || !currentUser) return;
 
     async function computeClassStats() {
       setLoadingStats(true);
@@ -62,12 +64,15 @@ export default function Statistics() {
         const totalAssessments = classAssessments.length;
 
         if (totalAssessments === 0) {
-          setSelectedClassStats({
-            totalAssessments: 0,
-            averagePercentage: 0,
-            highPerformers: 0,
-            needsImprovement: 0,
-            classResults: [],
+          setClassStats({
+            classId: selectedClass,
+            data: {
+              totalAssessments: 0,
+              averagePercentage: 0,
+              highPerformers: 0,
+              needsImprovement: 0,
+              classResults: [],
+            },
           });
           return;
         }
@@ -105,12 +110,15 @@ export default function Statistics() {
           };
         });
 
-        setSelectedClassStats({
-          totalAssessments,
-          averagePercentage,
-          highPerformers,
-          needsImprovement,
-          classResults,
+        setClassStats({
+          classId: selectedClass,
+          data: {
+            totalAssessments,
+            averagePercentage,
+            highPerformers,
+            needsImprovement,
+            classResults,
+          },
         });
       } catch (err) {
         console.error("Error computing class statistics:", err);
@@ -143,7 +151,7 @@ export default function Statistics() {
       {/* Header */}
       <div className="mb-6 sm:mb-8">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Statistika</h1>
-        <p className="text-gray-600 mt-1 text-sm sm:text-base">Umumiy statistika va sinflar bo'yicha tahlil</p>
+        <p className="text-gray-600 mt-1 text-sm sm:text-base">Umumiy statistika va sinflar bo&apos;yicha tahlil</p>
       </div>
 
       {/* Overall Statistics Cards */}
@@ -165,7 +173,7 @@ export default function Statistics() {
         <div className="bg-white rounded-xl shadow-xs p-5 border border-gray-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs sm:text-sm font-medium text-gray-600">O'quvchilar</p>
+              <p className="text-xs sm:text-sm font-medium text-gray-600">O&apos;quvchilar</p>
               <p className="text-2xl sm:text-3xl font-bold text-gray-900 mt-1">{overallStats.totalStudents}</p>
             </div>
             <div className="w-10 h-10 sm:w-12 sm:h-12 bg-green-100 rounded-lg flex items-center justify-center">
@@ -233,11 +241,11 @@ export default function Statistics() {
                 <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">{selectedClassStats.totalAssessments}</p>
               </div>
               <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-                <p className="text-xs text-blue-700 font-medium">O'rtacha %</p>
+                <p className="text-xs text-blue-700 font-medium">O&apos;rtacha %</p>
                 <p className="text-xl sm:text-2xl font-bold text-blue-700 mt-1">{selectedClassStats.averagePercentage}%</p>
               </div>
               <div className="bg-emerald-50 rounded-lg p-4 border border-emerald-200">
-                <p className="text-xs text-emerald-700 font-medium">A'lo (80%+)</p>
+                <p className="text-xs text-emerald-700 font-medium">A&apos;lo (80%+)</p>
                 <p className="text-xl sm:text-2xl font-bold text-emerald-700 mt-1">{selectedClassStats.highPerformers}</p>
               </div>
               <div className="bg-red-50 rounded-lg p-4 border border-red-200">
@@ -259,7 +267,7 @@ export default function Statistics() {
       {/* Recent Assessments Table */}
       <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
         <div className="p-4 sm:p-6 border-b border-gray-200">
-          <h2 className="text-lg sm:text-xl font-semibold text-gray-900">So'nggi baholashlar</h2>
+          <h2 className="text-lg sm:text-xl font-semibold text-gray-900">So&apos;nggi baholashlar</h2>
         </div>
         {assessments.length === 0 ? (
           <div className="p-8 sm:p-12 text-center text-gray-500 text-sm">
@@ -283,7 +291,7 @@ export default function Statistics() {
                     Sana
                   </th>
                   <th className="px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider text-center">
-                    O'rtacha %
+                    O&apos;rtacha %
                   </th>
                 </tr>
               </thead>

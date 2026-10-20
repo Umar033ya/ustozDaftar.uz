@@ -1,6 +1,7 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -23,8 +24,21 @@ if (missingKeys.length > 0 && typeof window !== "undefined") {
   );
 }
 
+// Validate storage bucket format
+if (firebaseConfig.storageBucket && typeof window !== "undefined") {
+  const bucket = firebaseConfig.storageBucket;
+  if (!bucket.includes("firebasestorage.com") && !bucket.includes("firebasestorage.app")) {
+    console.warn(
+      `[Firebase] Storage bucket format not standard: "${bucket}". ` +
+      "Expected format: your-project.appspot.com or your-project.firebasestorage.app"
+    );
+  }
+  console.log(`[Firebase] Storage bucket configured: ${bucket}`);
+}
+
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+export const storage = getStorage(app);
 export default app;
