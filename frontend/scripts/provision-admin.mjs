@@ -43,6 +43,16 @@ function die(message) {
 
 if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) die("Usage: node --env-file=.env.local scripts/provision-admin.mjs <admin-email> [--reset-password] [--out=<file>]");
 if (!projectId) die("FIREBASE_PROJECT_ID / NEXT_PUBLIC_FIREBASE_PROJECT_ID is not set.");
+// Never switch targets silently: the emulator must be asked for explicitly,
+// and the two project-id variables must agree.
+if (emulator && !args.includes("--emulator")) {
+  die(`FIREBASE_AUTH_EMULATOR_HOST is set (${emulator}). Unset it to provision the real project, or pass --emulator.`);
+}
+if (!emulator && args.includes("--emulator")) die("--emulator given but FIREBASE_AUTH_EMULATOR_HOST is not set.");
+const publicProject = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+if (process.env.FIREBASE_PROJECT_ID && publicProject && process.env.FIREBASE_PROJECT_ID !== publicProject) {
+  die(`FIREBASE_PROJECT_ID (${process.env.FIREBASE_PROJECT_ID}) and NEXT_PUBLIC_FIREBASE_PROJECT_ID (${publicProject}) differ.`);
+}
 if (!apiKey && !emulator) die("NEXT_PUBLIC_FIREBASE_API_KEY is not set (needed to verify the sign-in).");
 
 /** 20 characters, guaranteed upper/lower/digit/symbol, from crypto randomness. */
