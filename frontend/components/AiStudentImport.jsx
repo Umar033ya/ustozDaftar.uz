@@ -3,7 +3,8 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { auth } from "@/lib/firebase";
 import { cleanStudentName } from "@/lib/studentNames";
-import { addStudents } from "@/lib/firestoreService";
+import { addStudents, getStudents } from "@/lib/firestoreService";
+import { shrinkImage } from "@/lib/imageResize";
 import AiStudentReviewList, { buildReviewEntries, rosterMatch } from "./AiStudentReviewList";
 
 const MAX_IMAGES = 3;
@@ -65,15 +66,28 @@ export default function AiStudentImport({
 
   const showReview = (payload) => {
     const students = Array.isArray(payload?.students) ? payload.students : [];
+    // Completeness checks: the teacher is told about every possible gap
+    // instead of the import silently being shorter than the list.
     const summary = [];
+    if (payload?.incomplete) {
+      summary.push("AI javobi to'liq kelmadi — ro'yxat oxiri o'qilmagan bo'lishi mumkin. Rasm bilan solishtirib tekshiring.");
+    }
+    if (Number.isInteger(payload?.visibleRows) && payload.visibleRows > students.length) {
+      summary.push(
+        `AI rasmda ${payload.visibleRows} ta qator ko'rdi, lekin ${students.length} ta ismni o'qidi. Yetishmayotganlarini qo'lda qo'shing.`
+      );
+    }
+    if (Array.isArray(payload?.missingRows) && payload.missingRows.length > 0) {
+      summary.push(`Ro'yxatdagi ${payload.missingRows.join(", ")}-qator(lar) o'qilmadi. Ularni qo'lda qo'shing yoki aniqroq rasm yuklang.`);
+    }
     if (payload?.truncated > 0) {
       summary.push(`Ro'yxat juda uzun: oxirgi ${payload.truncated} ta ism olinmadi. Qolganini alohida rasm bilan yuklang.`);
     }
-    if (payload?.salvaged) {
-      summary.push("AI javobi to'liq kelmadi. Ro'yxat oxirini rasm bilan solishtirib tekshiring.");
-    }
     if (payload?.skippedEmpty > 0) {
       summary.push(`${payload.skippedEmpty} ta bo'sh qator e'tiborga olinmadi.`);
+    }
+    if (payload?.merged > 0) {
+      summary.push(`Bir-birini qoplagan rasmlarda takrorlangan ${payload.merged} ta qator bir marta olindi.`);
     }
     setNotices(summary);
     setStage("review");
@@ -166,8 +180,10 @@ export default function AiStudentImport({
         return;
       }
 
+      // Each image is uploaded once, downscaled; the answer is cached per selection.
+      const uploads = await Promise.all(files.map(shrinkImage));
       const formData = new FormData();
-      files.forEach((file) => formData.append("images", file));
+      uploads.forEach((file) => formData.append("images", file));
 
       const response = await fetch("/api/extract-students", {
         method: "POST",
@@ -215,15 +231,15 @@ export default function AiStudentImport({
     );
   };
 
-  // "Select all" leaves exact duplicates and students already in the class alone.
+  // "Select all" leaves only students already in the class (same spelling) alone.
   const setAllSelected = (value) => {
-    setExtracted((prev) =>
-      prev.map((entry) => (entry.duplicate || entry.inClass === "exact" ? entry : { ...entry, selected: value }))
-    );
+    setExtracted((prev) => prev.map((entry) => (entry.inClass === "exact" ? entry : { ...entry, selected: value })));
   };
 
   const selectableCount = extracted.filter((entry) => entry.inClass !== "exact").length;
   const selectedCount = extracted.filter((entry) => entry.selected).length;
+  // detected, not yet in the class, but not ticked: these would NOT be saved
+  const skippedCount = extracted.filter((entry) => !entry.selected && entry.inClass !== "exact").length;
 
   const handleConfirm = async () => {
     if (busy || selectedCount === 0) return;
@@ -241,20 +257,28 @@ export default function AiStudentImport({
     try {
       // One read and one atomic write for the whole batch.
       const created = await addStudents(uid, classId, names);
-      const rosterLength = (existingStudents?.length || 0) + created.length;
+
+      // Read the roster back: every student the teacher confirmed must be stored.
+      const stored = await getStudents(uid, classId);
+      const storedIds = new Set(stored.map((student) => student.id));
+      const lost = created.filter((student) => !storedIds.has(student.id));
+      if (lost.length > 0 || created.length !== names.length) {
+        throw new Error(`saved ${created.length - lost.length} of ${names.length}`);
+      }
+      const rosterLength = stored.length;
 
       onStudentsAdded?.(created, rosterLength);
       closeModal();
 
       const left = extracted.length - created.length;
-      const suffix = left > 0 ? ` ${left} ta ism tanlanmagani uchun qo'shilmadi.` : "";
+      const suffix = left > 0 ? ` ${left} ta ism qo'shilmadi (tanlanmagan yoki sinfda bor).` : "";
       onNotify?.(`${created.length} ta o'quvchi sinfga qo'shildi.${suffix}`);
     } catch (err) {
       console.error("Error adding students from AI import:", err);
       setStatus("idle");
       setError({
         kind: "firebase",
-        message: "O'quvchilarni saqlashda xatolik yuz berdi. Qayta urinib ko'ring.",
+        message: "O'quvchilarni saqlashda xatolik yuz berdi yoki hammasi saqlanmadi. Sinf ro'yxatini tekshirib, qayta urinib ko'ring.",
       });
     }
   };
@@ -288,7 +312,7 @@ export default function AiStudentImport({
           onClick={busy ? undefined : closeModal}
         >
           <div
-            className="bg-white rounded-xl shadow-lg border border-gray-200 w-full max-w-lg my-auto"
+            className={`bg-white rounded-xl shadow-lg border border-gray-200 w-full my-auto ${stage === "review" ? "max-w-2xl" : "max-w-lg"}`}
             onClick={(event) => event.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -407,12 +431,35 @@ export default function AiStudentImport({
                     </div>
                   )}
 
+                  {previews.length > 0 && (
+                    <details className="mb-3 rounded-lg border border-gray-200 bg-gray-50" open>
+                      <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-gray-700">
+                        Asl rasm — ismlarni harfma-harf solishtiring (ў, қ, ғ, ҳ, o‘, g‘)
+                      </summary>
+                      <div className="max-h-64 overflow-auto px-3 pb-3 space-y-2">
+                        {previews.map((src, index) => (
+                          <a key={src} href={src} target="_blank" rel="noopener noreferrer" className="block">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={src} alt={`Ro'yxat rasmi ${index + 1}`} className="w-full rounded border border-gray-200 bg-white" />
+                          </a>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+
                   <AiStudentReviewList
                     entries={extracted}
                     busy={busy}
                     onToggle={toggleStudent}
                     onRename={renameStudent}
                   />
+                  {skippedCount > 0 && (
+                    <div className="mt-3">
+                      <Banner tone="warning">
+                        {skippedCount} ta aniqlangan ism belgilanmagan — ular sinfga qo&apos;shilmaydi.
+                      </Banner>
+                    </div>
+                  )}
                   <p className="text-xs text-gray-500 mt-2">
                     Ismlar rasmdagi alifboda (kirill yoki lotin) saqlanadi. Xato bo&apos;lsa, shu yerning o&apos;zida tuzating.
                   </p>

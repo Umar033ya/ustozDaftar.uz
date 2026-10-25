@@ -1,52 +1,66 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 /**
- * inPAY API client — SERVER SIDE ONLY (route handlers under app/api/payments).
+ * inPAY API v2 client — SERVER SIDE ONLY (route handlers under app/api/payments).
  *
- * Source: official API reference https://inpay.uz/api/ (v1.0) and the official
- * PHP SDK https://github.com/inpayuz/inpay-php (WebhookHandler.php):
+ * Source: official reference https://inpay.uz/api/v2/ ("inPAY API v2 — hujjatlar"):
  *
- *   GET  /api/v1/authorization/?merchant_id=&merchant_token=  -> { success, bearer_token } (valid 24h)
- *   POST /api/v1/create/   (trailing slash required)         -> { success, order_id, pay_url, ... }
- *   GET  /api/v1/transactions/?order_id=                      -> { success, status, amount, ... }
- *        status: pending | success | failed | cancelled
- *   Webhook POST to callback_url: { order_id, status, amount, transaction_id, ... }
- *        SDK: X-InPAY-Signature = hex(HMAC-SHA256(raw body, webhook secret))
+ *   Auth      Authorization: Bearer sk_test_… (sandbox) | sk_live_… (real money)
+ *   POST      /payments/            { amount (integer so'm, ≥1000), currency, description,
+ *                                     return_url, webhook_url, metadata }  + Idempotency-Key
+ *             -> data { id, status, checkout_url, amount, currency, livemode, metadata, created }
+ *   GET       /payments/{id}        -> same object; the trusted status check
+ *   POST      /payments/{id}/cancel -> cancels an unpaid payment (invalid_state when paid)
+ *   status    requires_payment_method | requires_action | processing | succeeded | failed | canceled
+ *   Errors    { success: false, error: { type, code, message, request_id, param } }
+ *   Webhooks  X-Inpay-Signature: t=<unix>,v1=<hex>  where
+ *             v1 = HMAC-SHA256("{t}.{raw body}", whsec_ secret); reject when older than 5 min.
+ *   Refunds   not available through the API (manual, via the inPAY dashboard / support).
  *
- * The API reference does not document webhook signing, so a webhook is never
- * trusted by itself: it only triggers getTransaction(), a server-to-server
- * status check with the merchant's bearer token.
- *
- * Credentials come from server environment variables and are never logged or
- * returned to the browser.
+ * The secret key is read from server environment variables and is never
+ * logged or returned to the browser.
  */
 
-const DEFAULT_BASE_URL = "https://inpay.uz/api/v1";
-const TOKEN_TTL_MS = 23 * 60 * 60 * 1000; // inPAY tokens live 24h; refresh an hour early
+const DEFAULT_BASE_URL = "https://inpay.uz/api/v2";
 const REQUEST_TIMEOUT_MS = 15_000;
+export const SIGNATURE_TOLERANCE_SECONDS = 300;
 
 export class InPayError extends Error {
   /**
    * @param {string} message safe, credential-free message
-   * @param {{ code?: string, httpStatus?: number }} [details]
+   * @param {{ code?: string, httpStatus?: number, requestId?: string }} [details]
    */
-  constructor(message, { code = "INPAY_ERROR", httpStatus = 0 } = {}) {
+  constructor(message, { code = "inpay_error", httpStatus = 0, requestId = "" } = {}) {
     super(message);
     this.name = "InPayError";
     this.code = code;
     this.httpStatus = httpStatus;
+    this.requestId = requestId;
   }
 }
 
 export function readInPayConfig(env = process.env) {
-  const merchantId = (env.INPAY_MERCHANT_ID || "").trim();
-  const merchantToken = (env.INPAY_MERCHANT_TOKEN || "").trim();
+  const secretKey = (env.INPAY_SECRET_KEY || "").trim();
+  const mode = secretKey.startsWith("sk_live_") ? "live" : secretKey.startsWith("sk_test_") ? "test" : null;
   return {
-    merchantId,
-    merchantToken,
+    secretKey,
+    mode,
+    livemode: mode === "live",
     webhookSecret: (env.INPAY_WEBHOOK_SECRET || "").trim(),
     baseUrl: (env.INPAY_API_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, ""),
-    configured: Boolean(merchantId && merchantToken),
+    configured: mode !== null,
+  };
+}
+
+function normalizePayment(raw) {
+  return {
+    id: String(raw?.id || ""),
+    status: String(raw?.status || "unknown").toLowerCase(),
+    amount: Number(raw?.amount),
+    currency: String(raw?.currency || "UZS").toUpperCase(),
+    livemode: raw?.livemode === true,
+    checkoutUrl: typeof raw?.checkout_url === "string" ? raw.checkout_url : "",
+    metadata: raw?.metadata && typeof raw.metadata === "object" ? raw.metadata : {},
   };
 }
 
@@ -55,12 +69,10 @@ export function readInPayConfig(env = process.env) {
  * @param {typeof fetch} [fetchImpl] injectable for tests
  */
 export function createInPayClient(config, fetchImpl = fetch) {
-  let tokenCache = null; // { token, expiresAt }
-
-  async function call(method, path, { body, auth = true } = {}) {
-    const headers = { Accept: "application/json" };
-    if (auth) headers.Authorization = `Bearer ${await bearerToken()}`;
+  async function call(method, path, { body, idempotencyKey } = {}) {
+    const headers = { Accept: "application/json", Authorization: `Bearer ${config.secretKey}` };
     if (body !== undefined) headers["Content-Type"] = "application/json";
+    if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
 
     let response;
     try {
@@ -73,85 +85,80 @@ export function createInPayClient(config, fetchImpl = fetch) {
       });
     } catch (error) {
       throw new InPayError("inPAY serveriga ulanib bo'lmadi.", {
-        code: error?.name === "TimeoutError" ? "TIMEOUT" : "NETWORK",
+        code: error?.name === "TimeoutError" ? "timeout" : "network_error",
       });
     }
 
-    const data = await response.json().catch(() => null);
-    if (!data || typeof data !== "object") {
+    const payload = await response.json().catch(() => null);
+    if (!payload || typeof payload !== "object") {
       throw new InPayError(`inPAY javobini o'qib bo'lmadi (HTTP ${response.status}).`, {
-        code: "BAD_RESPONSE",
+        code: "bad_response",
         httpStatus: response.status,
       });
     }
-    if (!response.ok || data.success === false) {
-      if (auth && (data.error_code === "INVALID_TOKEN" || response.status === 401)) tokenCache = null;
-      throw new InPayError(typeof data.message === "string" ? data.message.slice(0, 200) : "inPAY so'rovi rad etildi.", {
-        code: typeof data.error_code === "string" ? data.error_code : "REJECTED",
+    if (!response.ok || payload.success !== true) {
+      const err = payload.error || {};
+      throw new InPayError(typeof err.message === "string" ? err.message.slice(0, 200) : "inPAY so'rovi rad etildi.", {
+        code: typeof err.code === "string" ? err.code : "rejected",
         httpStatus: response.status,
+        requestId: typeof err.request_id === "string" ? err.request_id : "",
       });
     }
-    return data;
-  }
-
-  async function bearerToken() {
-    if (tokenCache && tokenCache.expiresAt > Date.now()) return tokenCache.token;
-    const query = new URLSearchParams({ merchant_id: config.merchantId, merchant_token: config.merchantToken });
-    const data = await call("GET", `/authorization/?${query}`, { auth: false });
-    if (typeof data.bearer_token !== "string" || !data.bearer_token) {
-      throw new InPayError("inPAY avtorizatsiya tokenini bermadi.", { code: "NO_TOKEN" });
-    }
-    tokenCache = { token: data.bearer_token, expiresAt: Date.now() + TOKEN_TTL_MS };
-    return tokenCache.token;
+    return payload.data;
   }
 
   return {
+    mode: config.mode,
+
     /**
-     * @param {{ amount: number, description: string, callbackUrl: string, returnUrl: string, clientIp?: string }} p
-     * @returns {Promise<{ orderId: string, payUrl: string }>}
+     * @param {{ amount: number, description: string, returnUrl: string, webhookUrl: string,
+     *           metadata: Record<string, string>, idempotencyKey: string }} p
      */
-    async createPayment({ amount, description, callbackUrl, returnUrl, clientIp }) {
-      const body = {
-        merchant_id: config.merchantId,
-        token: config.merchantToken,
-        amount,
-        description,
-        callback_url: callbackUrl,
-        return_url: returnUrl,
-      };
-      if (clientIp) body.client_ip = clientIp;
-      const data = await call("POST", "/create/", { body });
-      const orderId = String(data.order_id || "");
-      const payUrl = String(data.pay_url || "");
-      if (!orderId || !/^https:\/\//.test(payUrl)) {
-        throw new InPayError("inPAY to'lov havolasini qaytarmadi.", { code: "NO_PAY_URL" });
+    async createPayment({ amount, description, returnUrl, webhookUrl, metadata, idempotencyKey }) {
+      if (!Number.isInteger(amount) || amount < 1000) {
+        throw new InPayError("Summa kamida 1000 so'm bo'lgan butun son bo'lishi kerak.", { code: "amount_invalid" });
       }
-      return { orderId, payUrl };
+      const data = await call("POST", "/payments/", {
+        body: { amount, currency: "UZS", description, return_url: returnUrl, webhook_url: webhookUrl, metadata },
+        idempotencyKey,
+      });
+      const payment = normalizePayment(data);
+      if (!payment.id || !/^https:\/\//.test(payment.checkoutUrl)) {
+        throw new InPayError("inPAY to'lov havolasini qaytarmadi.", { code: "no_checkout_url" });
+      }
+      return payment;
     },
 
-    /** @returns {Promise<{ orderId: string, status: string, amount: number, paidAt: string | null }>} */
-    async getTransaction(orderId) {
-      const data = await call("GET", `/transactions/?order_id=${encodeURIComponent(orderId)}`);
-      // The SDK accepts both a flat response and one wrapped in `data`.
-      const tx = data.data && typeof data.data === "object" ? data.data : data;
-      return {
-        orderId: String(tx.order_id || orderId),
-        status: String(tx.status || "unknown").toLowerCase(),
-        amount: Number(tx.amount) || 0,
-        paidAt: tx.paid_at ? String(tx.paid_at) : null,
-      };
+    async getPayment(id) {
+      return normalizePayment(await call("GET", `/payments/${encodeURIComponent(id)}`));
+    },
+
+    async cancelPayment(id) {
+      return normalizePayment(await call("POST", `/payments/${encodeURIComponent(id)}/cancel`));
     },
   };
 }
 
 /**
- * Verify X-InPAY-Signature (hex HMAC-SHA256 of the raw body, optional
- * "sha256=" prefix) in constant time.
+ * Verify an inPAY v2 webhook signature header ("t=<unix>,v1=<hex>[,v1=<hex>]").
+ *
+ * @returns {{ ok: true, timestamp: number } | { ok: false, reason: string }}
  */
-export function verifyWebhookSignature(rawBody, signature, secret) {
-  if (!secret || !signature) return false;
-  const candidate = signature.trim().replace(/^sha256=/i, "");
-  if (!/^[0-9a-f]{64}$/i.test(candidate)) return false;
-  const expected = createHmac("sha256", secret).update(rawBody, "utf8").digest();
-  return timingSafeEqual(expected, Buffer.from(candidate, "hex"));
+export function verifyWebhookSignature(rawBody, header, secret, nowSeconds = Math.floor(Date.now() / 1000)) {
+  if (!secret) return { ok: false, reason: "no_secret" };
+  if (!header) return { ok: false, reason: "missing_signature" };
+
+  let timestamp = NaN;
+  const signatures = [];
+  for (const part of String(header).split(",")) {
+    const [k, v] = part.trim().split("=", 2);
+    if (k === "t") timestamp = Number(v);
+    else if (k === "v1" && /^[0-9a-f]{64}$/i.test(v || "")) signatures.push(v.toLowerCase());
+  }
+  if (!Number.isFinite(timestamp) || signatures.length === 0) return { ok: false, reason: "malformed_signature" };
+  if (Math.abs(nowSeconds - timestamp) > SIGNATURE_TOLERANCE_SECONDS) return { ok: false, reason: "stale_signature" };
+
+  const expected = createHmac("sha256", secret).update(`${timestamp}.${rawBody}`, "utf8").digest();
+  const match = signatures.some((sig) => timingSafeEqual(expected, Buffer.from(sig, "hex")));
+  return match ? { ok: true, timestamp } : { ok: false, reason: "bad_signature" };
 }

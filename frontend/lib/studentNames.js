@@ -17,8 +17,11 @@
  *   were shortened are returned with a status so the teacher can decide.
  */
 
-/** Upper bound on one extraction; large enough for any real class list. */
-export const MAX_STUDENTS = 60;
+/**
+ * Safety bound on one extraction (abuse/cost protection only). Far above any
+ * real class; when it is ever hit the overflow is reported, never hidden.
+ */
+export const MAX_STUDENTS = 150;
 
 // Uzbek Cyrillic -> Uzbek Latin following the official alphabet (Ў -> Oʻ,
 // Ғ -> Gʻ, Ҳ -> H, Х -> X). Only used for comparison keys.
@@ -170,41 +173,65 @@ function suspicionReason(name) {
   return null;
 }
 
+function readRaw(value) {
+  if (typeof value === "string") return value;
+  if (typeof value?.name === "string") return value.name;
+  if (typeof value?.fullName === "string") return value.fullName;
+  return "";
+}
+
+/** Printed row number, when the model reported a usable one. */
+function readRow(value) {
+  const row = value && typeof value === "object" ? Number(value.row) : NaN;
+  return Number.isInteger(row) && row > 0 && row < 10_000 ? row : null;
+}
+
 /**
- * Turn raw extracted names into review entries. Order is preserved and no
- * entry is removed: every input line produces exactly one entry, so the
- * teacher always sees what the model returned.
+ * Turn raw extracted names into review entries, in order.
  *
- * @param {unknown[]} values strings or `{ name | fullName, uncertain }`
+ * Exactly one thing is ever merged: the SAME printed row (same row number and
+ * the same name) reported twice, which is what overlapping screenshots of one
+ * list produce. Every merge is counted and reported. Two students that share
+ * a name on different rows (or without row numbers) are both kept and both
+ * flagged `same_name`, so a namesake can never disappear.
+ *
+ * @param {unknown[]} values strings or `{ name | fullName, uncertain, row }`
  * @returns {{
- *   entries: { fullName: string, original: string, status: "ok" | "duplicate" | "empty",
+ *   entries: { fullName: string, original: string, status: "ok" | "empty", row: number | null,
  *              warnings: string[], uncertain: boolean }[],
- *   truncated: number
+ *   truncated: number,
+ *   merged: number
  * }}
  */
 export function analyzeStudentNames(values) {
   const list = Array.isArray(values) ? values : [];
   const entries = [];
+  const byRowAndKey = new Set();
   const firstByKey = new Map();
   const firstByLooseKey = new Map();
+  let merged = 0;
 
   for (const value of list.slice(0, MAX_STUDENTS)) {
-    const raw =
-      typeof value === "string"
-        ? value
-        : typeof value?.name === "string"
-          ? value.name
-          : typeof value?.fullName === "string"
-            ? value.fullName
-            : "";
+    const raw = readRaw(value);
+    const row = readRow(value);
     const uncertain = Boolean(value && typeof value === "object" && value.uncertain);
     const original = cleanStudentName(raw);
     const fullName = normalizeStudentName(raw);
     const warnings = [];
 
     if (!fullName) {
-      entries.push({ fullName: "", original, status: "empty", warnings: ["empty"], uncertain });
+      entries.push({ fullName: "", original, status: "empty", row, warnings: ["empty"], uncertain });
       continue;
+    }
+
+    const key = nameKey(fullName);
+    if (row !== null) {
+      const rowKey = `${row}\u0000${key}`;
+      if (byRowAndKey.has(rowKey)) {
+        merged += 1;
+        continue;
+      }
+      byRowAndKey.add(rowKey);
     }
 
     if (fullName !== original) warnings.push("shortened");
@@ -212,27 +239,65 @@ export function analyzeStudentNames(values) {
     const reason = suspicionReason(fullName);
     if (reason) warnings.push(reason);
 
-    const key = nameKey(fullName);
     const looseKey = looseNameKey(fullName);
-    let status = "ok";
     if (firstByKey.has(key)) {
-      status = "duplicate";
+      warnings.push("same_name");
+      const first = entries[firstByKey.get(key)];
+      if (!first.warnings.includes("same_name")) first.warnings.push("same_name");
     } else if (looseKey && firstByLooseKey.has(looseKey)) {
       warnings.push("possible_duplicate");
     }
     if (!firstByKey.has(key)) firstByKey.set(key, entries.length);
     if (looseKey && !firstByLooseKey.has(looseKey)) firstByLooseKey.set(looseKey, entries.length);
 
-    entries.push({ fullName, original, status, warnings, uncertain });
+    entries.push({ fullName, original, status: "ok", row, warnings, uncertain });
   }
 
-  return { entries, truncated: Math.max(0, list.length - MAX_STUDENTS) };
+  flagMinorityScript(entries);
+  return { entries, truncated: Math.max(0, list.length - MAX_STUDENTS), merged };
 }
 
 /**
- * Backwards-compatible helper: normalized, de-duplicated names in order.
- * Prefer analyzeStudentNames, which never hides anything.
+ * A class list is almost always written in one alphabet. A name in the other
+ * one is kept exactly as returned, but flagged: it is the typical trace of a
+ * model that transliterated instead of copying.
  */
+function flagMinorityScript(entries) {
+  const counts = { cyrillic: 0, latin: 0 };
+  for (const entry of entries) {
+    const script = detectScript(entry.fullName);
+    if (script in counts) counts[script] += 1;
+  }
+  const total = counts.cyrillic + counts.latin;
+  if (total < 4) return;
+  const dominant = counts.cyrillic >= counts.latin ? "cyrillic" : "latin";
+  if (counts[dominant] / total < 0.75) return;
+  for (const entry of entries) {
+    const script = detectScript(entry.fullName);
+    if (script !== dominant && script in counts) entry.warnings.push("other_script");
+  }
+}
+
+/**
+ * Completeness check against the list's own numbering: printed row numbers
+ * between the first and last one read that have no entry. Only trusted when
+ * most entries carry a row number.
+ *
+ * @param {{ row: number | null, status: string }[]} entries
+ * @returns {number[]} missing row numbers, ascending (at most 50)
+ */
+export function missingRowNumbers(entries) {
+  const rows = entries.filter((e) => e.status !== "empty" && e.row !== null).map((e) => e.row);
+  if (rows.length < 3 || rows.length < entries.length * 0.6) return [];
+  const present = new Set(rows);
+  const missing = [];
+  for (let row = Math.min(...rows); row <= Math.max(...rows) && missing.length < 50; row++) {
+    if (!present.has(row)) missing.push(row);
+  }
+  return missing;
+}
+
+/** Normalized names in order (every student kept, namesakes included). */
 export function normalizeStudentNames(values) {
   return analyzeStudentNames(values)
     .entries.filter((entry) => entry.status === "ok")

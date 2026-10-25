@@ -2,6 +2,7 @@
 
 import { useElementWidth } from "@/lib/useElementWidth";
 import { bandColor, ChartLegend } from "@/lib/chartColors";
+import { isResultEntered } from "@/lib/resultStats";
 
 const ROW_HEIGHT = 32;
 const BAR_HEIGHT = 18;
@@ -17,7 +18,15 @@ function fitName(name, maxWidth) {
   return name.length > maxChars ? `${name.slice(0, maxChars - 1).trimEnd()}…` : name;
 }
 
-export default function StudentPercentageChart({ results = [], title = "O'quvchilar ko'rsatkichi (%)" }) {
+/**
+ * One bar per student. Every student of the list is drawn: a student without
+ * an entered result is shown as "kiritilmagan" (no bar), never as a 0% bar,
+ * so a real 0 and a missing score cannot be confused.
+ *
+ * `type` ("BSB" | "ChSB") decides "entered" for raw result rows; rows that
+ * were already aggregated may carry an explicit `entered` flag instead.
+ */
+export default function StudentPercentageChart({ results = [], type, title = "O'quvchilar ko'rsatkichi (%)" }) {
   const [containerRef, width] = useElementWidth();
 
   if (!results || results.length === 0) {
@@ -31,8 +40,10 @@ export default function StudentPercentageChart({ results = [], title = "O'quvchi
 
   const rows = results.map((r) => ({
     name: r.studentName || "O'quvchi",
+    entered: typeof r.entered === "boolean" ? r.entered : type ? isResultEntered(r, type) : true,
     percentage: Math.min(100, Math.max(0, parseFloat(r.percentage) || 0)),
   }));
+  const enteredCount = rows.filter((row) => row.entered).length;
 
   // The name column takes about a third of the width, within readable bounds.
   const nameWidth = Math.round(Math.min(220, Math.max(96, width * 0.34)));
@@ -43,7 +54,14 @@ export default function StudentPercentageChart({ results = [], title = "O'quvchi
   return (
     <div className="bg-white p-4 sm:p-6 rounded-xl shadow-xs border border-gray-200 print:hidden min-w-0">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-4">
-        <h3 className="text-base font-bold text-gray-900">{title}</h3>
+        <div>
+          <h3 className="text-base font-bold text-gray-900">{title}</h3>
+          {enteredCount < rows.length && (
+            <p className="text-xs text-gray-500 mt-0.5">
+              {enteredCount} / {rows.length} o&apos;quvchi natijasi kiritilgan
+            </p>
+          )}
+        </div>
         <ChartLegend />
       </div>
 
@@ -78,6 +96,20 @@ export default function StudentPercentageChart({ results = [], title = "O'quvchi
 
             {rows.map((item, idx) => {
               const y = TOP_PADDING + idx * ROW_HEIGHT + (ROW_HEIGHT - BAR_HEIGHT) / 2;
+              if (!item.entered) {
+                return (
+                  <g key={idx}>
+                    <title>{`${item.name}: natija kiritilmagan`}</title>
+                    <text x={nameWidth} y={y + BAR_HEIGHT / 2 + 4} fontSize="12" fontWeight="500" fill="#9CA3AF" textAnchor="end">
+                      {fitName(item.name, nameWidth)}
+                    </text>
+                    <rect x={barX} y={y} width={barWidthMax} height={BAR_HEIGHT} rx={4} fill="#F9FAFB" stroke="#E5E7EB" strokeDasharray="4 3" />
+                    <text x={barX + 8} y={y + BAR_HEIGHT / 2 + 4} fontSize="11" fill="#9CA3AF">
+                      kiritilmagan
+                    </text>
+                  </g>
+                );
+              }
               const barWidth = (item.percentage / 100) * barWidthMax;
               const color = bandColor(item.percentage);
 

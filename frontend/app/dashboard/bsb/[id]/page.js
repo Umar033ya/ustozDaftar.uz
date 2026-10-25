@@ -8,7 +8,7 @@ import LoadingState from "@/components/LoadingState";
 import StudentPercentageChart from "@/components/StudentPercentageChart";
 import TaskAverageChart from "@/components/TaskAverageChart";
 import { exportBSBToExcel } from "@/lib/excelExport";
-import { isResultEntered } from "@/lib/resultStats";
+import { isResultEntered, summarizeAssessment } from "@/lib/resultStats";
 import SaveStatus from "@/components/SaveStatus";
 import { useAuth } from "@/lib/authContext";
 import {
@@ -192,42 +192,8 @@ export default function BSBResult() {
     window.print();
   };
 
-  const calculateStatistics = () => {
-    if (!results || results.length === 0) return null;
-    
-    const validResults = results.filter((r) => isResultEntered(r, "BSB"));
-    const totals = (validResults.length > 0 ? validResults : results).map((r) => r.total || 0);
-    const percentages = (validResults.length > 0 ? validResults : results).map((r) => r.percentage || 0);
-
-    const activeList = validResults.length > 0 ? validResults : results;
-
-    // Calculate task averages
-    const taskAverages = assessment.tasks.map((task, taskIndex) => {
-      const taskScores = activeList
-        .map((r) => (r.scores || [])[taskIndex])
-        .filter((s) => s !== "" && s !== undefined && !isNaN(s));
-
-      if (taskScores.length === 0) return "0.0";
-      const avgScore = taskScores.reduce((a, b) => a + b, 0) / taskScores.length;
-      return ((avgScore / task.maxScore) * 100).toFixed(1);
-    });
-
-    const avgScore = (totals.reduce((a, b) => a + b, 0) / totals.length).toFixed(1);
-    const avgPct = (percentages.reduce((a, b) => a + b, 0) / percentages.length).toFixed(1);
-
-    return {
-      maxTotal: assessment.maxTotal,
-      studentCount: results.length,
-      completedCount: validResults.length,
-      averageScore: avgScore,
-      averagePercentage: avgPct,
-      highestScore: totals.length > 0 ? Math.max(...totals) : 0,
-      lowestScore: totals.length > 0 ? Math.min(...totals) : 0,
-      taskAverages,
-    };
-  };
-
-  const stats = calculateStatistics();
+  // Only entered results count; a real 0 is a result, an empty cell is not.
+  const stats = summarizeAssessment(assessment, results);
 
   if (loading) {
     return (
@@ -306,30 +272,35 @@ export default function BSBResult() {
             </div>
             <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
               <p className="text-xs text-gray-500 font-medium">O&apos;quvchilar</p>
-              <p className="text-lg font-bold text-gray-900 mt-0.5">{stats.studentCount}</p>
+              <p className="text-lg font-bold text-gray-900 mt-0.5">
+                {stats.studentCount}
+                {stats.completedCount < stats.studentCount && (
+                  <span className="ml-1 text-xs font-medium text-amber-700">({stats.completedCount} kiritilgan)</span>
+                )}
+              </p>
             </div>
             <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
               <p className="text-xs text-gray-500 font-medium">O&apos;rtacha ball</p>
-              <p className="text-lg font-bold text-gray-900 mt-0.5">{stats.averageScore}</p>
+              <p className="text-lg font-bold text-gray-900 mt-0.5">{stats.averageScore ?? "—"}</p>
             </div>
             <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
               <p className="text-xs text-gray-500 font-medium">O&apos;rtacha %</p>
-              <p className="text-lg font-bold text-gray-900 mt-0.5">{stats.averagePercentage}%</p>
+              <p className="text-lg font-bold text-gray-900 mt-0.5">{stats.averagePercentage === null ? "—" : `${stats.averagePercentage}%`}</p>
             </div>
             <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-200">
               <p className="text-xs text-emerald-700 font-medium">Eng yuqori</p>
-              <p className="text-lg font-bold text-emerald-700 mt-0.5">{stats.highestScore}</p>
+              <p className="text-lg font-bold text-emerald-700 mt-0.5">{stats.highestScore ?? "—"}</p>
             </div>
             <div className="bg-red-50 rounded-lg p-3 border border-red-200">
               <p className="text-xs text-red-700 font-medium">Eng past</p>
-              <p className="text-lg font-bold text-red-700 mt-0.5">{stats.lowestScore}</p>
+              <p className="text-lg font-bold text-red-700 mt-0.5">{stats.lowestScore ?? "—"}</p>
             </div>
           </div>
         )}
 
         {/* Charts Section (Hidden in Print) */}
         <div className="grid grid-cols-1 xl:grid-cols-2 items-start gap-4 print:hidden mb-6">
-          <StudentPercentageChart results={results} title="O'quvchilar BSB ko'rsatkichi (%)" />
+          <StudentPercentageChart results={results} type="BSB" title="O'quvchilar BSB ko'rsatkichi (%)" />
           {stats && <TaskAverageChart tasks={assessment.tasks} taskAverages={stats.taskAverages} />}
         </div>
 
@@ -407,16 +378,16 @@ export default function BSBResult() {
                             }
                           }
                         }}
-                        className="w-12 sm:w-14 h-8 px-1 text-center font-semibold border border-gray-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white"
-                        placeholder="0"
+                        className="w-12 sm:w-14 h-8 px-1 text-center font-semibold border border-gray-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white placeholder:text-gray-300"
+                        placeholder="–"
                       />
                     </td>
                   ))}
                   <td className="px-3 py-2 border border-gray-300 text-center font-bold text-gray-900 bg-gray-50">
-                    {result.total || 0}
+                    {isResultEntered(result, "BSB") ? Number(result.total) || 0 : "—"}
                   </td>
                   <td className="px-3 py-2 border border-gray-300 text-center font-bold text-gray-900 bg-gray-50">
-                    {(result.percentage || 0).toFixed(1)}%
+                    {isResultEntered(result, "BSB") ? `${(Number(result.percentage) || 0).toFixed(1)}%` : "—"}
                   </td>
                 </tr>
               ))}
@@ -431,14 +402,14 @@ export default function BSBResult() {
                   </td>
                   {stats.taskAverages.map((avg, idx) => (
                     <td key={idx} className="px-2 py-2.5 border border-gray-300 text-center font-extrabold text-blue-700">
-                      {avg}%
+                      {avg === null ? "—" : `${avg}%`}
                     </td>
                   ))}
                   <td className="px-3 py-2.5 border border-gray-300 text-center font-extrabold text-gray-900 bg-gray-200">
-                    {stats.averageScore}
+                    {stats.averageScore ?? "—"}
                   </td>
                   <td className="px-3 py-2.5 border border-gray-300 text-center font-extrabold text-blue-800 bg-gray-200">
-                    {stats.averagePercentage}%
+                    {stats.averagePercentage === null ? "—" : `${stats.averagePercentage}%`}
                   </td>
                 </tr>
               </tfoot>

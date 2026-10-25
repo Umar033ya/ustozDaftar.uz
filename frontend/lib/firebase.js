@@ -1,6 +1,6 @@
 import { initializeApp, getApps } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { connectAuthEmulator, getAuth } from "firebase/auth";
+import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
@@ -40,5 +40,13 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+// Local testing only: `NEXT_PUBLIC_FIREBASE_EMULATOR=1 npm run dev` talks to the
+// Auth/Firestore emulators (firebase emulators:start) instead of production.
+if (process.env.NEXT_PUBLIC_FIREBASE_EMULATOR === "1" && !globalThis.__ustozEmulatorConnected) {
+  globalThis.__ustozEmulatorConnected = true;
+  connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
+  connectFirestoreEmulator(db, "127.0.0.1", 8080);
+}
 export const storage = getStorage(app);
 export default app;

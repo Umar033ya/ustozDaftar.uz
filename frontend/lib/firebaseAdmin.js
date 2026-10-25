@@ -29,7 +29,12 @@ let cachedAuth;
 let cachedDb;
 
 export function hasAdminCredentials() {
-  return Boolean(process.env.FIREBASE_SERVICE_ACCOUNT || process.env.GOOGLE_APPLICATION_CREDENTIALS);
+  return Boolean(
+    process.env.FIREBASE_SERVICE_ACCOUNT ||
+      process.env.GOOGLE_APPLICATION_CREDENTIALS ||
+      // local emulator suite: the Admin SDK needs no key against it
+      (process.env.FIRESTORE_EMULATOR_HOST && process.env.FIREBASE_AUTH_EMULATOR_HOST)
+  );
 }
 
 function adminApp() {
@@ -133,4 +138,35 @@ export async function requireAuth(request) {
     // mean the same thing to a caller: 401.
     throw new AuthError(error?.code || "invalid_token");
   }
+}
+
+/** Thrown when a valid user is not an administrator (HTTP 403). */
+export class ForbiddenError extends Error {
+  constructor() {
+    super("forbidden");
+    this.name = "ForbiddenError";
+  }
+}
+
+/**
+ * Require a verified ID token that carries the server-assigned `admin: true`
+ * custom claim. Revocation is checked as well when service-account
+ * credentials are configured, so a revoked admin loses access immediately.
+ *
+ * @returns {Promise<{ uid: string, email: string | null }>}
+ * @throws {AuthError | ForbiddenError | ConfigError}
+ */
+export async function requireAdmin(request) {
+  const token = readBearerToken(request);
+  if (!token) throw new AuthError("missing_token");
+
+  let decoded;
+  try {
+    decoded = await adminAuth().verifyIdToken(token, hasAdminCredentials());
+  } catch (error) {
+    if (error instanceof ConfigError) throw error;
+    throw new AuthError(error?.code || "invalid_token");
+  }
+  if (decoded.admin !== true) throw new ForbiddenError();
+  return { uid: decoded.uid, email: decoded.email || null };
 }

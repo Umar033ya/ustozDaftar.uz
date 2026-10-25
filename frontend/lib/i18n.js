@@ -6,6 +6,8 @@
 //
 // Languages: uz-latin (O'zbek lotin), uz-cyrillic (Ўзбек кирилл), ru (Русский)
 
+import { subscriptionTranslations } from "./i18nSubscription.js";
+
 export const DEFAULT_LANG = "uz-latin";
 export const STORAGE_KEY = "ustozdaftar_lang";
 export const SUPPORTED_LANGS = ["uz-latin", "uz-cyrillic", "ru"];
@@ -35,6 +37,8 @@ export const translations = {
     "nav.chsb": "ChSB",
     "nav.statistics": "Statistika",
     "nav.settings": "Sozlamalar",
+    "nav.adminFinance": "Moliya (admin)",
+    "nav.adminPayments": "To'lov so'rovlari (admin)",
     "nav.logout": "Chiqish",
     "nav.back": "Qaytish",
 
@@ -432,7 +436,8 @@ export const translations = {
     "adminPayments.status": {
       "pending": "Kutilmoqda",
       "approved": "Tasdiqlangan",
-      "rejected": "Rad etilgan"
+      "rejected": "Rad etilgan",
+      "refunded": "Qaytarilgan"
     },
     "adminPayments.plan": "Tarif",
     "adminPayments.billingPeriod": "To'lov davri",
@@ -490,6 +495,8 @@ export const translations = {
     "nav.chsb": "ЧСБ",
     "nav.statistics": "Статистика",
     "nav.settings": "Созламалар",
+    "nav.adminFinance": "Молия (админ)",
+    "nav.adminPayments": "Тўлов сўровлари (админ)",
     "nav.logout": "Чиқиш",
     "nav.back": "Қайтиш",
 
@@ -887,7 +894,8 @@ export const translations = {
     "adminPayments.status": {
       "pending": "Кутилмоқда",
       "approved": "Тасдиқланган",
-      "rejected": "Рад этилган"
+      "rejected": "Рад этилган",
+      "refunded": "Қайтарилган"
     },
     "adminPayments.plan": "Тариф",
     "adminPayments.billingPeriod": "Тўлов даври",
@@ -945,6 +953,8 @@ export const translations = {
     "nav.chsb": "ЧСБ",
     "nav.statistics": "Статистика",
     "nav.settings": "Настройки",
+    "nav.adminFinance": "Финансы (админ)",
+    "nav.adminPayments": "Заявки на оплату (админ)",
     "nav.logout": "Выход",
     "nav.back": "Назад",
 
@@ -1342,7 +1352,8 @@ export const translations = {
     "adminPayments.status": {
       "pending": "Ожидает",
       "approved": "Подтвержден",
-      "rejected": "Отклонен"
+      "rejected": "Отклонен",
+      "refunded": "Возвращён"
     },
     "adminPayments.plan": "Тариф",
     "adminPayments.billingPeriod": "Период оплаты",
@@ -1382,6 +1393,8 @@ export const translations = {
     "general.required": "Обязательно",
   },
 };
+
+for (const [lang, extra] of Object.entries(subscriptionTranslations)) Object.assign(translations[lang], extra);
 
 /** Pure lookup with a safe fallback chain: lang -> default lang -> key. */
 export function translate(lang, key) {

@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
+import { isResultEntered } from "./resultStats.js";
 
 /**
  * Trigger file download in browser
@@ -55,7 +56,10 @@ function strCache(values) {
 }
 
 function numCache(values, formatCode) {
-  const points = values.map((v, i) => `<c:pt idx="${i}"><c:v>${Number(v) || 0}</c:v></c:pt>`).join("");
+  // a blank cell (no result entered) is a missing point, not a 0 bar
+  const points = values
+    .map((v, i) => (v === null || v === undefined ? "" : `<c:pt idx="${i}"><c:v>${Number(v) || 0}</c:v></c:pt>`))
+    .join("");
   return `<c:numCache><c:formatCode>${formatCode}</c:formatCode><c:ptCount val="${values.length}"/>${points}</c:numCache>`;
 }
 
@@ -354,9 +358,11 @@ export async function buildBSBWorkbook(assessment, results, stats, schoolName = 
     const studentScores = assessment.tasks.map((_, i) =>
       scores[i] === "" || scores[i] === undefined || scores[i] === null ? null : Number(scores[i])
     );
-    const pctVal = (result.percentage || 0) / 100;
+    // A student with no entered score gets blank total/percentage, a real 0 stays 0.
+    const entered = isResultEntered(result, "BSB");
+    const pctVal = entered ? (Number(result.percentage) || 0) / 100 : null;
 
-    r.values = [idx + 1, result.studentName, ...studentScores, result.total || 0, pctVal];
+    r.values = [idx + 1, result.studentName, ...studentScores, entered ? Number(result.total) || 0 : null, pctVal];
     r.height = 20;
 
     // Styling
@@ -417,7 +423,7 @@ export async function buildBSBWorkbook(assessment, results, stats, schoolName = 
   const rawBuffer = await workbook.xlsx.writeBuffer();
   const finalBuffer = await attachNativeChartsToZip(rawBuffer, sheetName, numStudents, numTasks, true, {
     studentNames: results.map((r) => r.studentName || ""),
-    studentPcts: results.map((r) => (r.percentage || 0) / 100),
+    studentPcts: results.map((r) => (isResultEntered(r, "BSB") ? (Number(r.percentage) || 0) / 100 : null)),
     taskLabels: taskHeaderLabels,
     taskAvgs,
   });
@@ -506,8 +512,9 @@ export async function buildChSBWorkbook(assessment, results, stats, schoolName =
   results.forEach((result, idx) => {
     const rowNum = 7 + idx;
     const r = sheet.getRow(rowNum);
-    const scoreVal = result.total === "" || result.total === undefined || result.total === null ? null : Number(result.total);
-    const pctVal = (result.percentage || 0) / 100;
+    const entered = isResultEntered(result, "ChSB");
+    const scoreVal = entered ? Number(result.total) : null;
+    const pctVal = entered ? (Number(result.percentage) || 0) / 100 : null;
 
     r.values = [idx + 1, result.studentName, scoreVal, pctVal];
     r.height = 20;
@@ -562,7 +569,7 @@ export async function buildChSBWorkbook(assessment, results, stats, schoolName =
   const rawBuffer = await workbook.xlsx.writeBuffer();
   const finalBuffer = await attachNativeChartsToZip(rawBuffer, sheetName, numStudents, 0, false, {
     studentNames: results.map((r) => r.studentName || ""),
-    studentPcts: results.map((r) => (r.percentage || 0) / 100),
+    studentPcts: results.map((r) => (isResultEntered(r, "ChSB") ? (Number(r.percentage) || 0) / 100 : null)),
   });
 
   const filename = safeFilename(`${assessment.className}_${assessment.subject}_ChSB-${assessment.number}.xlsx`);

@@ -11,25 +11,28 @@ const WARNING_TEXT = {
   single_word: () => "Faqat bitta so'z: familiya yoki ism yetishmayapti.",
   symbols: () => "Ismda noodatiy belgilar bor — tekshiring.",
   possible_duplicate: () => "Ro'yxatda boshqa alifboda yozilgan o'xshash ism bor.",
+  same_name: () => "Ro'yxatda xuddi shu ism yana bor. Ikki xil o'quvchi bo'lsa ikkalasini qoldiring, bitta o'quvchi bo'lsa birini olib tashlang.",
+  other_script: () => "Bu ism ro'yxatning qolganidan boshqa alifboda — rasmdagi yozuv bilan solishtiring.",
 };
 
 /**
- * Turn the API entries into editable review rows. Nothing is hidden: exact
- * duplicates and students already in the class are only unselected.
+ * Turn the API entries into editable review rows. Nothing is hidden and every
+ * detected student starts selected — namesakes included — except a student
+ * whose exact name is already in the class (re-importing the same list must
+ * not double the roster). The teacher sees and can change every choice.
  */
 export function buildReviewEntries(students, roster) {
   return students.map((entry, index) => {
     const fullName = (entry?.fullName || "").trim();
     const inClass = rosterMatch(fullName, roster);
-    const duplicate = entry?.status === "duplicate";
     return {
       id: index,
+      row: Number.isInteger(entry?.row) ? entry.row : null,
       fullName,
       original: entry?.original || fullName,
       warnings: Array.isArray(entry?.warnings) ? entry.warnings : [],
-      duplicate,
       inClass,
-      selected: !duplicate && inClass !== "exact",
+      selected: inClass !== "exact",
     };
   });
 }
@@ -74,6 +77,11 @@ export default function AiStudentReviewList({ entries, busy, onToggle, onRename 
               aria-label={`${entry.fullName || "Ism"} ni tanlash`}
               className="mt-2 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0"
             />
+            {entry.row !== null && (
+              <span className="mt-2 w-7 shrink-0 text-right text-xs tabular-nums text-gray-400" title="Ro'yxatdagi raqami">
+                {entry.row}
+              </span>
+            )}
             <div className="flex-1 min-w-0 space-y-1.5">
               <input
                 type="text"
@@ -88,11 +96,10 @@ export default function AiStudentReviewList({ entries, busy, onToggle, onRename 
                   entry.selected && empty ? "border-red-400" : "border-gray-300"
                 } ${entry.selected ? "text-gray-900" : "text-gray-500"}`}
               />
-              {(entry.inClass || entry.duplicate || notes.length > 0 || (entry.selected && empty)) && (
+              {(entry.inClass || (entry.selected && empty)) && (
                 <div className="flex flex-wrap gap-1.5">
                   {entry.inClass === "exact" && <Tag tone="gray">sinfda bor</Tag>}
                   {entry.inClass === "similar" && <Tag tone="amber">sinfda boshqa alifboda bor bo&apos;lishi mumkin</Tag>}
-                  {entry.duplicate && <Tag tone="amber">takroriy — ikki xil o&apos;quvchi bo&apos;lsa belgilang</Tag>}
                   {entry.selected && empty && <Tag tone="red">ism bo&apos;sh</Tag>}
                 </div>
               )}

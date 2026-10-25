@@ -68,6 +68,12 @@ test("BSB export: one row per student, names unchanged, blanks stay blank", asyn
     const row = sheet.getRow(7 + idx);
     assert.equal(row.getCell(1).value, idx + 1);
     assert.equal(row.getCell(2).value, result.studentName, "name must be exported exactly, in its own script");
+    if (idx === 1) {
+      // nothing entered: total and % are blank, not a fake 0
+      assert.equal(row.getCell(totalCols - 1).value, null);
+      assert.equal(row.getCell(totalCols).value, null);
+      return;
+    }
     assert.equal(row.getCell(totalCols - 1).value, result.total);
     assert.ok(Math.abs(row.getCell(totalCols).value - result.percentage / 100) < 1e-9);
   });

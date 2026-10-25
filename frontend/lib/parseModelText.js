@@ -1,14 +1,16 @@
 /**
  * Parse the student list returned by the vision model.
  *
- * Accepts the requested `{ "students": [{ "name", "uncertain" }] }` shape as
- * well as the older `{ "students": ["..."] }` one, ```json fences and text
+ * Accepts the structured `{ "students": [{ "row", "name", "uncertain" }], "visible_rows" }`
+ * shape, the older `{ "students": ["..."] }` one, ```json fences and text
  * around the JSON. When the JSON itself is broken (most often an answer cut
- * off by the token limit) the complete string values are salvaged, so a
- * truncated answer still yields every name that was fully written.
+ * off by the token limit) the complete entries are salvaged, so a truncated
+ * answer still yields every name that was fully written — and is reported as
+ * salvaged so the teacher is warned.
  *
  * @param {unknown} text raw model output
- * @returns {{ students: unknown[], salvaged: boolean } | null} null when nothing usable was found
+ * @returns {{ students: unknown[], salvaged: boolean, visibleRows: number | null } | null}
+ *   null when nothing usable was found
  */
 export function parseModelText(text) {
   if (typeof text !== "string" || !text.trim()) return null;
@@ -27,31 +29,44 @@ export function parseModelText(text) {
   for (const candidate of candidates) {
     try {
       const parsed = JSON.parse(candidate);
-      if (Array.isArray(parsed)) return { students: parsed, salvaged: false };
-      if (parsed && Array.isArray(parsed.students)) return { students: parsed.students, salvaged: false };
+      if (Array.isArray(parsed)) return { students: parsed, salvaged: false, visibleRows: null };
+      if (parsed && Array.isArray(parsed.students)) {
+        return { students: parsed.students, salvaged: false, visibleRows: readCount(parsed.visible_rows) };
+      }
     } catch {
       // try the next candidate
     }
   }
 
-  // Salvage: only after a "students" key, pick every complete "name": "..."
-  // pair, or every complete string in the array.
+  // Salvage: only after a "students" key, pick every complete entry.
   const start = cleaned.search(/"students"\s*:\s*\[/);
   if (start === -1) return null;
   const tail = cleaned.slice(start).replace(/^"students"\s*:\s*\[/, "");
+  const visible = cleaned.match(/"visible_rows"\s*:\s*(\d+)/);
 
-  const STRING = /"((?:[^"\\]|\\.)*)"/g;
   const students = [];
   if (/"name"\s*:/.test(tail)) {
-    const pair = /"name"\s*:\s*"((?:[^"\\]|\\.)*)"(?:\s*,\s*"uncertain"\s*:\s*(true|false))?/g;
-    for (const match of tail.matchAll(pair)) {
-      students.push({ name: unescapeJson(match[1]), uncertain: match[2] === "true" });
+    // one complete {...} object at a time; fields may come in any order
+    for (const match of tail.matchAll(/\{[^{}]*\}/g)) {
+      const obj = match[0];
+      const name = obj.match(/"name"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      if (!name) continue;
+      const row = obj.match(/"row"\s*:\s*(\d+)/);
+      const uncertain = obj.match(/"uncertain"\s*:\s*(true|false)/);
+      const entry = { name: unescapeJson(name[1]), uncertain: uncertain?.[1] === "true" };
+      if (row) entry.row = Number(row[1]);
+      students.push(entry);
     }
   } else {
-    for (const match of tail.matchAll(STRING)) students.push(unescapeJson(match[1]));
+    for (const match of tail.matchAll(/"((?:[^"\\]|\\.)*)"/g)) students.push(unescapeJson(match[1]));
   }
 
-  return students.length > 0 ? { students, salvaged: true } : null;
+  return students.length > 0 ? { students, salvaged: true, visibleRows: visible ? readCount(visible[1]) : null } : null;
+}
+
+function readCount(value) {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 0 && n < 10_000 ? n : null;
 }
 
 function unescapeJson(value) {

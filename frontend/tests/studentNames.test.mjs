@@ -72,10 +72,13 @@ test("analyzeStudentNames never silently drops a student", () => {
   assert.equal(truncated, 0);
 
   assert.equal(entries[0].status, "ok");
+  assert.ok(entries[0].warnings.includes("same_name"), "the first namesake is flagged too");
   assert.equal(entries[1].status, "ok");
   assert.ok(entries[1].warnings.includes("possible_duplicate"));
   assert.equal(entries[1].fullName, "Каримов Ўткир");
-  assert.equal(entries[2].status, "duplicate");
+  // a namesake is a student to review, never a duplicate that is dropped
+  assert.equal(entries[2].status, "ok");
+  assert.ok(entries[2].warnings.includes("same_name"));
   assert.ok(entries[3].uncertain && entries[3].warnings.includes("uncertain"));
   assert.equal(entries[4].fullName, "Алиева Шаҳзода");
   assert.equal(entries[5].status, "empty");

@@ -337,6 +337,24 @@ function toAssessment(id, raw) {
   };
 }
 
+/**
+ * Everything the statistics page needs from ONE document read: classes, their
+ * rosters, and assessments with their result rows.
+ */
+export async function getWorkspace(uid) {
+  const data = asMap(await readUserDoc(uid));
+  const classMap = asMap(data.classes);
+  const studentsByClass = {};
+  for (const [classId, raw] of Object.entries(classMap)) studentsByClass[classId] = toStudentList(raw);
+  const assessments = Object.entries(asMap(data.assessments))
+    .map(([id, raw]) => ({
+      ...toAssessment(id, raw),
+      results: Object.entries(asMap(asMap(raw).results)).map(([rid, r]) => ({ id: rid, ...asMap(r) })),
+    }))
+    .sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id));
+  return { classes: toClassList(data), studentsByClass, assessments };
+}
+
 export async function getAssessments(uid) {
   const assessments = asMap(asMap(await readUserDoc(uid)).assessments);
   return Object.entries(assessments)

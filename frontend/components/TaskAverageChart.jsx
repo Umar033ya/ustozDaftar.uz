@@ -15,9 +15,8 @@ const MAX_BAR = 56;
 export default function TaskAverageChart({ tasks = [], taskAverages = [] }) {
   const [containerRef, width] = useElementWidth();
 
-  if (!tasks || tasks.length === 0 || !taskAverages || taskAverages.length === 0) {
-    return null;
-  }
+  if (!tasks || tasks.length === 0) return null;
+  const hasData = (taskAverages || []).some((avg) => avg !== null && avg !== undefined);
 
   // Fill the available width; with many tasks on a narrow screen fall back to
   // horizontal scrolling instead of squeezing labels into each other.
@@ -32,8 +31,15 @@ export default function TaskAverageChart({ tasks = [], taskAverages = [] }) {
         Topshiriqlar bo&apos;yicha o&apos;rtacha o&apos;zlashtirish (%)
       </h3>
 
-      <div ref={containerRef} className="w-full overflow-x-auto" style={{ minHeight: CHART_HEIGHT }}>
-        {width > 0 && (
+      {!hasData && (
+        <p className="text-sm text-gray-500 text-center py-10">Topshiriqlar bo&apos;yicha ballar hali kiritilmagan</p>
+      )}
+      <div
+        ref={containerRef}
+        className={`w-full overflow-x-auto ${hasData ? "" : "hidden"}`}
+        style={{ minHeight: hasData ? CHART_HEIGHT : 0 }}
+      >
+        {hasData && width > 0 && (
           <svg
             width={svgWidth}
             height={CHART_HEIGHT}
@@ -55,7 +61,9 @@ export default function TaskAverageChart({ tasks = [], taskAverages = [] }) {
             })}
 
             {tasks.map((task, idx) => {
-              const avgPct = Math.min(100, Math.max(0, parseFloat(taskAverages[idx]) || 0));
+              const raw = taskAverages[idx];
+              const missing = raw === null || raw === undefined;
+              const avgPct = missing ? 0 : Math.min(100, Math.max(0, parseFloat(raw) || 0));
               const barHeight = (avgPct / 100) * PLOT_HEIGHT;
               const cx = AXIS_LEFT + slot * idx + slot / 2;
               const x = cx - barWidth / 2;
@@ -64,7 +72,11 @@ export default function TaskAverageChart({ tasks = [], taskAverages = [] }) {
 
               return (
                 <g key={idx}>
-                  <title>{`${task.number}-topshiriq: ${avgPct.toFixed(1)}% (maks: ${task.maxScore})`}</title>
+                  <title>
+                    {missing
+                      ? `${task.number}-topshiriq: ball kiritilmagan`
+                      : `${task.number}-topshiriq: ${avgPct.toFixed(1)}% (maks: ${task.maxScore})`}
+                  </title>
                   <rect x={x} y={PLOT_TOP} width={barWidth} height={PLOT_HEIGHT} rx={4} fill="#F3F4F6" />
                   <rect
                     x={x}
@@ -77,7 +89,7 @@ export default function TaskAverageChart({ tasks = [], taskAverages = [] }) {
                   />
                   {/* drawn after the track and bar so it is never painted over */}
                   <text x={cx} y={Math.max(14, y - 6)} fontSize="11" fontWeight="700" fill={color} textAnchor="middle">
-                    {avgPct.toFixed(1)}%
+                    {missing ? "—" : `${avgPct.toFixed(1)}%`}
                   </text>
                   <text x={cx} y={PLOT_BOTTOM + 18} fontSize="11" fontWeight="600" fill="#374151" textAnchor="middle">
                     {task.number}-t

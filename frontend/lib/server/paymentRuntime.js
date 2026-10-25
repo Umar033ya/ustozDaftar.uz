@@ -7,6 +7,7 @@ import { createPaymentService } from "./subscriptionPayments.js";
  *
  * APP_BASE_URL is taken from configuration, never from the request's Host
  * header, so a forged header cannot redirect inPAY callbacks elsewhere.
+ * The key prefix decides the mode: sk_test_ (sandbox) or sk_live_ (real money).
  */
 
 let cached;
@@ -18,8 +19,7 @@ export function paymentRuntime() {
   const config = readInPayConfig();
   const baseUrl = (process.env.APP_BASE_URL || "").trim().replace(/\/+$/, "");
   const missing = [];
-  if (!config.merchantId) missing.push("INPAY_MERCHANT_ID");
-  if (!config.merchantToken) missing.push("INPAY_MERCHANT_TOKEN");
+  if (!config.configured) missing.push("INPAY_SECRET_KEY (sk_test_… / sk_live_…)");
   if (!/^https?:\/\//.test(baseUrl)) missing.push("APP_BASE_URL");
   if (!hasAdminCredentials()) missing.push("FIREBASE_SERVICE_ACCOUNT");
   if (missing.length > 0) return { ok: false, missing };
@@ -28,7 +28,7 @@ export function paymentRuntime() {
     ok: true,
     config,
     baseUrl,
-    service: createPaymentService({ db: adminDb(), inpay: createInPayClient(config) }),
+    service: createPaymentService({ db: adminDb(), inpay: createInPayClient(config), livemode: config.livemode }),
   };
   return cached;
 }

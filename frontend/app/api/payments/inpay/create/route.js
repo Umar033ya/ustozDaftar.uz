@@ -58,21 +58,18 @@ export async function POST(request) {
     return fail("Juda ko'p urinish. 10 daqiqadan so'ng qayta urinib ko'ring.", 429, "rate_limited");
   }
 
-  const forwarded = request.headers.get("x-forwarded-for") || "";
-  const clientIp = forwarded.split(",")[0].trim() || undefined;
-
   try {
     const { paymentId, payUrl } = await rt.service.startPayment({
       uid: user.uid,
       plan,
       billingPeriod,
       baseUrl: rt.baseUrl,
-      clientIp,
     });
     return NextResponse.json({ paymentId, payUrl });
   } catch (error) {
     if (error instanceof InPayError) {
-      console.error("[payments] inPAY create failed", { code: error.code, httpStatus: error.httpStatus });
+      // request_id is what inPAY support asks for; it carries no secret.
+      console.error("[payments] inPAY create failed", { code: error.code, httpStatus: error.httpStatus, requestId: error.requestId });
       return fail("To'lov tizimi bilan bog'lanib bo'lmadi. Birozdan so'ng qayta urinib ko'ring.", 502, "provider_error");
     }
     console.error("[payments] create failed", error?.message || error);

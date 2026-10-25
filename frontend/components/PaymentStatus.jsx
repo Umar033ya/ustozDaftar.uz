@@ -149,8 +149,8 @@ function RetryButton({ t, onClick }) {
 
 function BackLink({ t }) {
   return (
-    <Link href="/dashboard" className="rounded-lg bg-gray-100 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-200">
-      {t("inpay.action.toDashboard")}
+    <Link href="/dashboard/subscription" className="rounded-lg bg-gray-100 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-200">
+      {t("inpay.action.toSubscription")}
     </Link>
   );
 }

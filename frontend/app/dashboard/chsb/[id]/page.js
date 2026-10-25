@@ -7,7 +7,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import LoadingState from "@/components/LoadingState";
 import StudentPercentageChart from "@/components/StudentPercentageChart";
 import { exportChSBToExcel } from "@/lib/excelExport";
-import { isResultEntered } from "@/lib/resultStats";
+import { isResultEntered, summarizeAssessment } from "@/lib/resultStats";
 import SaveStatus from "@/components/SaveStatus";
 import { useAuth } from "@/lib/authContext";
 import {
@@ -184,28 +184,8 @@ export default function ChSBResult() {
     window.print();
   };
 
-  const calculateStatistics = () => {
-    if (!results || results.length === 0) return null;
-    
-    const validResults = results.filter((r) => isResultEntered(r, "ChSB"));
-    const totals = (validResults.length > 0 ? validResults : results).map((r) => (r.total === "" ? 0 : r.total || 0));
-    const percentages = (validResults.length > 0 ? validResults : results).map((r) => r.percentage || 0);
-
-    const avgScore = (totals.reduce((a, b) => a + b, 0) / totals.length).toFixed(1);
-    const avgPct = (percentages.reduce((a, b) => a + b, 0) / percentages.length).toFixed(1);
-
-    return {
-      maxScore: assessment.maxScore,
-      studentCount: results.length,
-      completedCount: validResults.length,
-      averageScore: avgScore,
-      averagePercentage: avgPct,
-      highestScore: totals.length > 0 ? Math.max(...totals) : 0,
-      lowestScore: totals.length > 0 ? Math.min(...totals) : 0,
-    };
-  };
-
-  const stats = calculateStatistics();
+  // Only entered results count; a real 0 is a result, an empty cell is not.
+  const stats = summarizeAssessment(assessment, results);
 
   if (loading) {
     return (
@@ -284,30 +264,35 @@ export default function ChSBResult() {
             </div>
             <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
               <p className="text-xs text-gray-500 font-medium">O&apos;quvchilar</p>
-              <p className="text-lg font-bold text-gray-900 mt-0.5">{stats.studentCount}</p>
+              <p className="text-lg font-bold text-gray-900 mt-0.5">
+                {stats.studentCount}
+                {stats.completedCount < stats.studentCount && (
+                  <span className="ml-1 text-xs font-medium text-amber-700">({stats.completedCount} kiritilgan)</span>
+                )}
+              </p>
             </div>
             <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
               <p className="text-xs text-gray-500 font-medium">O&apos;rtacha ball</p>
-              <p className="text-lg font-bold text-gray-900 mt-0.5">{stats.averageScore}</p>
+              <p className="text-lg font-bold text-gray-900 mt-0.5">{stats.averageScore ?? "—"}</p>
             </div>
             <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
               <p className="text-xs text-gray-500 font-medium">O&apos;rtacha %</p>
-              <p className="text-lg font-bold text-gray-900 mt-0.5">{stats.averagePercentage}%</p>
+              <p className="text-lg font-bold text-gray-900 mt-0.5">{stats.averagePercentage === null ? "—" : `${stats.averagePercentage}%`}</p>
             </div>
             <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-200">
               <p className="text-xs text-emerald-700 font-medium">Eng yuqori</p>
-              <p className="text-lg font-bold text-emerald-700 mt-0.5">{stats.highestScore}</p>
+              <p className="text-lg font-bold text-emerald-700 mt-0.5">{stats.highestScore ?? "—"}</p>
             </div>
             <div className="bg-red-50 rounded-lg p-3 border border-red-200">
               <p className="text-xs text-red-700 font-medium">Eng past</p>
-              <p className="text-lg font-bold text-red-700 mt-0.5">{stats.lowestScore}</p>
+              <p className="text-lg font-bold text-red-700 mt-0.5">{stats.lowestScore ?? "—"}</p>
             </div>
           </div>
         )}
 
         {/* Charts Section (Hidden in Print) */}
         <div className="print:hidden mb-6">
-          <StudentPercentageChart results={results} title="O'quvchilar ChSB ko'rsatkichi (%)" />
+          <StudentPercentageChart results={results} type="ChSB" title="O'quvchilar ChSB ko'rsatkichi (%)" />
         </div>
 
         {/* Official Printable Result Table */}
@@ -373,12 +358,12 @@ export default function ChSBResult() {
                           }
                         }
                       }}
-                      className="w-20 sm:w-24 h-8 px-1 text-center font-semibold border border-gray-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white mx-auto"
-                      placeholder="0"
+                      className="w-20 sm:w-24 h-8 px-1 text-center font-semibold border border-gray-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white mx-auto placeholder:text-gray-300"
+                      placeholder="–"
                     />
                   </td>
                   <td className="px-3 py-2 border border-gray-300 text-center font-bold text-gray-900 bg-gray-50">
-                    {(result.percentage || 0).toFixed(1)}%
+                    {isResultEntered(result, "ChSB") ? `${(Number(result.percentage) || 0).toFixed(1)}%` : "—"}
                   </td>
                 </tr>
               ))}
@@ -392,10 +377,10 @@ export default function ChSBResult() {
                     O&apos;rtacha ko&apos;rsatkich
                   </td>
                   <td className="px-3 py-2.5 border border-gray-300 text-center font-extrabold text-blue-700 bg-gray-200">
-                    {stats.averageScore}
+                    {stats.averageScore ?? "—"}
                   </td>
                   <td className="px-3 py-2.5 border border-gray-300 text-center font-extrabold text-blue-800 bg-gray-200">
-                    {stats.averagePercentage}%
+                    {stats.averagePercentage === null ? "—" : `${stats.averagePercentage}%`}
                   </td>
                 </tr>
               </tfoot>

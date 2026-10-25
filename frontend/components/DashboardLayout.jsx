@@ -7,10 +7,10 @@ import Logo from "./Logo";
 import LanguageSwitcher from "./LanguageSwitcher";
 import PlanBadge from "./PlanBadge";
 import LoadingState from "./LoadingState";
-import { useSubscriptionFlow } from "./SubscriptionFlow";
 import { useAuth } from "@/lib/authContext";
 import { useSubscription } from "@/lib/subscriptionContext";
 import { useTranslation } from "@/lib/useTranslation";
+import { useIsAdmin } from "@/lib/apiClient";
 
 const NAV_ITEMS = [
   {
@@ -59,12 +59,44 @@ const NAV_ITEMS = [
     ),
   },
   {
+    key: "nav.subscription",
+    href: "/dashboard/subscription",
+    icon: (
+      <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+      </svg>
+    ),
+  },
+  {
     key: "nav.settings",
     href: "/dashboard/settings",
     icon: (
       <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+    ),
+  },
+];
+
+// Shown only to users whose token carries the admin claim. Hiding links is
+// convenience only: the admin APIs and security rules enforce access.
+const ADMIN_NAV_ITEMS = [
+  {
+    key: "nav.adminFinance",
+    href: "/dashboard/admin",
+    icon: (
+      <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+  },
+  {
+    key: "nav.adminPayments",
+    href: "/dashboard/admin/payments",
+    icon: (
+      <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
       </svg>
     ),
   },
@@ -82,7 +114,8 @@ export default function DashboardLayout({ children }) {
   const { currentUser, userProfile, loading, logout } = useAuth();
   const { plan } = useSubscription();
   const { t } = useTranslation();
-  const { openPlanInfo, dialogs } = useSubscriptionFlow();
+  const { isAdmin } = useIsAdmin();
+  const navItems = isAdmin ? [...NAV_ITEMS, ...ADMIN_NAV_ITEMS] : NAV_ITEMS;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -124,17 +157,6 @@ export default function DashboardLayout({ children }) {
         <p className="truncate text-sm font-semibold text-gray-900">{fullName}</p>
         <div className="mt-0.5 flex items-center gap-1.5">
           <PlanBadge plan={plan} />
-          <button
-            type="button"
-            onClick={openPlanInfo}
-            className="rounded-full text-gray-400 transition-colors hover:text-blue-600"
-            title={t("subscription.planInfo")}
-            aria-label={t("subscription.planInfo")}
-          >
-            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </button>
         </div>
       </div>
     </div>
@@ -169,7 +191,7 @@ export default function DashboardLayout({ children }) {
 
         {mobileMenuOpen && (
           <nav className="px-4 pt-2 pb-4 border-t border-gray-100 bg-white space-y-1">
-            {NAV_ITEMS.map((item) => {
+            {navItems.map((item) => {
               const active = isActive(item.href);
               return (
                 <Link
@@ -218,7 +240,7 @@ export default function DashboardLayout({ children }) {
         </div>
 
         <nav className="mt-2 flex-1">
-          {NAV_ITEMS.map((item) => {
+          {navItems.map((item) => {
             const active = isActive(item.href);
             return (
               <Link
@@ -263,7 +285,7 @@ export default function DashboardLayout({ children }) {
         <div className="max-w-7xl mx-auto w-full">{children}</div>
       </main>
 
-      {dialogs}
+
     </div>
   );
 }
