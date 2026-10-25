@@ -93,9 +93,12 @@ export default function PaymentRequestForm({ open, onClose, plan, billingPeriod,
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-6" onClick={close}>
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center overflow-y-auto bg-black/50 px-4 py-6" onClick={close}>
       <div
-        className="w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("paymentRequest.title")}
+        className="my-auto w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-gray-200 p-5">

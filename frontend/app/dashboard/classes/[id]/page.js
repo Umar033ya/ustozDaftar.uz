@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
+import LoadingState from "@/components/LoadingState";
 import AiStudentImport from "@/components/AiStudentImport";
 import { useAuth } from "@/lib/authContext";
 import {
@@ -195,7 +196,7 @@ export default function ClassDetail() {
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="text-center text-gray-500 py-12">Yuklanmoqda...</div>
+        <LoadingState />
       </DashboardLayout>
     );
   }

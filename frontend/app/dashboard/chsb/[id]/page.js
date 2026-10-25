@@ -4,8 +4,11 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
+import LoadingState from "@/components/LoadingState";
 import StudentPercentageChart from "@/components/StudentPercentageChart";
 import { exportChSBToExcel } from "@/lib/excelExport";
+import { isResultEntered } from "@/lib/resultStats";
+import SaveStatus from "@/components/SaveStatus";
 import { useAuth } from "@/lib/authContext";
 import {
   getAssessmentById,
@@ -29,6 +32,10 @@ export default function ChSBResult() {
   const [loading, setLoading] = useState(true);
   const saveTimers = useRef({});
   const pendingSaves = useRef({});
+  const failedSaves = useRef(new Set());
+  const [saveError, setSaveError] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
 
   useEffect(() => {
     if (!currentUser || !assessmentId) return;
@@ -77,9 +84,14 @@ export default function ChSBResult() {
       delete pendingSaves.current[studentId];
       try {
         await updateResult(currentUser.uid, assessmentId, studentId, pending);
+        failedSaves.current.delete(studentId);
       } catch (e) {
-        console.error("Error updating ChSB result:", e);
+        console.error("Error updating ChSB result:", e?.code || e);
+        // Keep the unsaved score (unless a newer one is already queued) so a retry can send it.
+        if (!pendingSaves.current[studentId]) pendingSaves.current[studentId] = pending;
+        failedSaves.current.add(studentId);
       } finally {
+        setSaveError(failedSaves.current.size > 0);
         setSaving(false);
       }
     },
@@ -149,8 +161,23 @@ export default function ChSBResult() {
     });
   };
 
-  const handleExport = () => {
-    exportChSBToExcel(assessment, results, stats, schoolName);
+  const retryFailedSaves = () => {
+    setSaving(true);
+    [...failedSaves.current].forEach((studentId) => flushSave(studentId));
+  };
+
+  const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    setExportError("");
+    try {
+      await exportChSBToExcel(assessment, results, stats, schoolName);
+    } catch (e) {
+      console.error("Excel export failed:", e);
+      setExportError("Excel faylini yaratib bo'lmadi. Sahifani yangilab, qayta urinib ko'ring.");
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handlePrint = () => {
@@ -160,7 +187,7 @@ export default function ChSBResult() {
   const calculateStatistics = () => {
     if (!results || results.length === 0) return null;
     
-    const validResults = results.filter((r) => r.total !== "" && r.total !== undefined && r.total > 0);
+    const validResults = results.filter((r) => isResultEntered(r, "ChSB"));
     const totals = (validResults.length > 0 ? validResults : results).map((r) => (r.total === "" ? 0 : r.total || 0));
     const percentages = (validResults.length > 0 ? validResults : results).map((r) => r.percentage || 0);
 
@@ -183,7 +210,7 @@ export default function ChSBResult() {
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="text-center text-gray-500 py-12">Yuklanmoqda...</div>
+        <LoadingState />
       </DashboardLayout>
     );
   }
@@ -211,12 +238,14 @@ export default function ChSBResult() {
           <div className="flex gap-2 sm:gap-3">
             <button
               onClick={handleExport}
-              className="bg-emerald-600 text-white px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg hover:bg-emerald-700 font-medium text-xs sm:text-sm flex items-center gap-1.5 transition-colors shadow-xs"
+              disabled={exporting}
+              aria-busy={exporting}
+              className="bg-emerald-600 text-white px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg hover:bg-emerald-700 font-medium text-xs sm:text-sm flex items-center gap-1.5 transition-colors shadow-xs disabled:opacity-70 disabled:cursor-wait"
             >
               <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              Excelga yuklash
+              {exporting ? "Tayyorlanmoqda..." : "Excelga yuklash"}
             </button>
             <button
               onClick={handlePrint}
@@ -229,6 +258,11 @@ export default function ChSBResult() {
             </button>
           </div>
         </div>
+        {exportError && (
+          <p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-700">
+            {exportError}
+          </p>
+        )}
       </div>
 
       {/* Official Result Document Wrapper */}
@@ -370,11 +404,7 @@ export default function ChSBResult() {
         </div>
       </div>
 
-      {saving && (
-        <div className="fixed bottom-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg text-xs font-semibold z-50 print:hidden">
-          Saqlanmoqda...
-        </div>
-      )}
+      <SaveStatus saving={saving} saveError={saveError} onRetry={retryFailedSaves} />
     </DashboardLayout>
   );
 }

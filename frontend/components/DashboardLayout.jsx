@@ -6,6 +6,7 @@ import Link from "next/link";
 import Logo from "./Logo";
 import LanguageSwitcher from "./LanguageSwitcher";
 import PlanBadge from "./PlanBadge";
+import LoadingState from "./LoadingState";
 import { useSubscriptionFlow } from "./SubscriptionFlow";
 import { useAuth } from "@/lib/authContext";
 import { useSubscription } from "@/lib/subscriptionContext";
@@ -107,7 +108,7 @@ export default function DashboardLayout({ children }) {
   if (loading || !currentUser) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-500 font-medium text-sm">{t("loading")}</div>
+        <LoadingState label={t("loading")} />
       </div>
     );
   }
@@ -205,7 +206,7 @@ export default function DashboardLayout({ children }) {
       </header>
 
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex flex-col w-64 bg-white shadow-lg fixed h-full z-20 print:hidden">
+      <aside className="hidden md:flex flex-col w-64 bg-white shadow-lg fixed inset-y-0 left-0 z-20 overflow-y-auto print:hidden">
         <div className="p-5">
           <Link href="/dashboard" className="flex items-center gap-3">
             <Logo size="default" />

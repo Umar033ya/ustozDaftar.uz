@@ -1,14 +1,21 @@
-import { initializeApp, getApps } from "firebase-admin/app";
+import { initializeApp, getApps, cert } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
+import { getFirestore } from "firebase-admin/firestore";
 
 /**
  * Firebase Admin — SERVER SIDE ONLY.
  *
- * Only ever imported from `app/api/extract-students/route.js`. Nothing under
- * `app/` (client components) may import this module, so the Admin SDK and the
- * credentials it reads never reach a browser bundle.
+ * Only ever imported from route handlers under `app/api/`. No client component
+ * may import this module, so the Admin SDK and the credentials it reads never
+ * reach a browser bundle.
  *
- * No service account private key is used or required. Verifying an ID token
+ * Verifying an ID token (requireAuth) needs no private key. Admin Firestore
+ * (adminDb, used by the InPay payment routes to record payments and activate
+ * subscriptions after server-side verification) does: it reads the
+ * service-account JSON from FIREBASE_SERVICE_ACCOUNT, or the file named by
+ * GOOGLE_APPLICATION_CREDENTIALS. The original no-key notes follow.
+ *
+ * Verifying an ID token
  * only needs the project id: the SDK downloads Google's public signing
  * certificates over HTTPS, checks the JWT signature, then validates `aud`,
  * `iss`, `exp` and `sub` against the project. A private key would only be
@@ -19,13 +26,15 @@ import { getAuth } from "firebase-admin/auth";
  */
 
 let cachedAuth;
+let cachedDb;
 
-/**
- * @returns {import("firebase-admin/auth").Auth} the Admin auth instance
- * @throws when the project id is not configured
- */
-function adminAuth() {
-  if (cachedAuth) return cachedAuth;
+export function hasAdminCredentials() {
+  return Boolean(process.env.FIREBASE_SERVICE_ACCOUNT || process.env.GOOGLE_APPLICATION_CREDENTIALS);
+}
+
+function adminApp() {
+  // getApps() guard: Next.js can evaluate this module more than once per process.
+  if (getApps().length > 0) return getApps()[0];
 
   const projectId = process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
   if (!projectId) {
@@ -34,10 +43,43 @@ function adminAuth() {
     );
   }
 
-  // getApps() guard: Next.js can evaluate this module more than once per process.
-  const app = getApps().length > 0 ? getApps()[0] : initializeApp({ projectId });
-  cachedAuth = getAuth(app);
+  const options = { projectId };
+  const json = process.env.FIREBASE_SERVICE_ACCOUNT;
+  if (json) {
+    try {
+      options.credential = cert(JSON.parse(json));
+    } catch {
+      // never echo the value: it is a private key
+      throw new ConfigError("FIREBASE_SERVICE_ACCOUNT is not a valid service-account JSON.");
+    }
+  }
+  // GOOGLE_APPLICATION_CREDENTIALS is picked up by firebase-admin automatically.
+  return initializeApp(options);
+}
+
+/**
+ * @returns {import("firebase-admin/auth").Auth} the Admin auth instance
+ * @throws when the project id is not configured
+ */
+function adminAuth() {
+  if (cachedAuth) return cachedAuth;
+  cachedAuth = getAuth(adminApp());
   return cachedAuth;
+}
+
+/**
+ * Privileged Firestore access (bypasses security rules). Server routes only.
+ * @throws {ConfigError} when no service-account credential is configured
+ */
+export function adminDb() {
+  if (cachedDb) return cachedDb;
+  if (!hasAdminCredentials()) {
+    throw new ConfigError(
+      "Firebase Admin credentials are not configured. Set FIREBASE_SERVICE_ACCOUNT (or GOOGLE_APPLICATION_CREDENTIALS)."
+    );
+  }
+  cachedDb = getFirestore(adminApp());
+  return cachedDb;
 }
 
 /** Thrown for every token that must produce an HTTP 401. */

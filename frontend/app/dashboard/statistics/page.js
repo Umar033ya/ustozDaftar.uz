@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
+import LoadingState from "@/components/LoadingState";
 import StudentPercentageChart from "@/components/StudentPercentageChart";
 import { useAuth } from "@/lib/authContext";
 import { getClasses, getAssessments, getStudents, getResults } from "@/lib/firestoreService";
+import { isResultEntered } from "@/lib/resultStats";
 
 export default function Statistics() {
   const { currentUser } = useAuth();
@@ -77,10 +79,10 @@ export default function Statistics() {
           return;
         }
 
-        const allPercentages = classAssessments.flatMap((a) =>
-          (a.results || []).map((r) => r.percentage || 0)
+        // Only entered results count; a real 0 score is a result, an empty cell is not.
+        const validPercentages = classAssessments.flatMap((a) =>
+          (a.results || []).filter((r) => isResultEntered(r, a.type)).map((r) => r.percentage || 0)
         );
-        const validPercentages = allPercentages.filter((p) => p > 0);
 
         const averagePercentage = validPercentages.length > 0
           ? (validPercentages.reduce((a, b) => a + b, 0) / validPercentages.length).toFixed(1)
@@ -95,9 +97,10 @@ export default function Statistics() {
         const classResults = classStudents.map((student) => {
           const studentScores = classAssessments
             .flatMap((a) =>
-              (a.results || []).filter((r) => r.studentId === student.id).map((r) => r.percentage || 0)
-            )
-            .filter((p) => p > 0);
+              (a.results || [])
+                .filter((r) => r.studentId === student.id && isResultEntered(r, a.type))
+                .map((r) => r.percentage || 0)
+            );
 
           const avgPct = studentScores.length > 0
             ? studentScores.reduce((a, b) => a + b, 0) / studentScores.length
@@ -141,7 +144,7 @@ export default function Statistics() {
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="text-center text-gray-500 py-12">Yuklanmoqda...</div>
+        <LoadingState />
       </DashboardLayout>
     );
   }
@@ -297,7 +300,7 @@ export default function Statistics() {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {assessments.slice(0, 10).map((assessment) => {
-                  const validResults = (assessment.results || []).filter((r) => r.percentage > 0 || r.total > 0);
+                  const validResults = (assessment.results || []).filter((r) => isResultEntered(r, assessment.type));
                   const avgPercentage = validResults.length > 0
                     ? (validResults.reduce((sum, r) => sum + (r.percentage || 0), 0) / validResults.length).toFixed(1)
                     : 0;

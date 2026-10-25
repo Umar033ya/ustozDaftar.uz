@@ -77,6 +77,13 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // inPAY payments are created and updated only by the server (Admin SDK),
+    // after the payment was verified with inPAY. Clients may read their own.
+    match /inpayPayments/{paymentId} {
+      allow read: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

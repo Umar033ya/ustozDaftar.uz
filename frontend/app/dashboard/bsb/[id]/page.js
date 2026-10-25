@@ -4,9 +4,12 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
+import LoadingState from "@/components/LoadingState";
 import StudentPercentageChart from "@/components/StudentPercentageChart";
 import TaskAverageChart from "@/components/TaskAverageChart";
 import { exportBSBToExcel } from "@/lib/excelExport";
+import { isResultEntered } from "@/lib/resultStats";
+import SaveStatus from "@/components/SaveStatus";
 import { useAuth } from "@/lib/authContext";
 import {
   getAssessmentById,
@@ -28,8 +31,12 @@ export default function BSBResult() {
   const [saving, setSaving] = useState(false);
   const [schoolName, setSchoolName] = useState("");
   const [loading, setLoading] = useState(true);
+  const [saveError, setSaveError] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
   const saveTimers = useRef({});
   const pendingSaves = useRef({});
+  const failedSaves = useRef(new Set());
 
   useEffect(() => {
     if (!currentUser || !assessmentId) return;
@@ -78,9 +85,14 @@ export default function BSBResult() {
       delete pendingSaves.current[studentId];
       try {
         await updateResult(currentUser.uid, assessmentId, studentId, pending);
+        failedSaves.current.delete(studentId);
       } catch (e) {
-        console.error("Error updating result:", e);
+        console.error("Error updating result:", e?.code || e);
+        // Keep the unsaved scores (unless newer ones are already queued) so a retry can send them.
+        if (!pendingSaves.current[studentId]) pendingSaves.current[studentId] = pending;
+        failedSaves.current.add(studentId);
       } finally {
+        setSaveError(failedSaves.current.size > 0);
         setSaving(false);
       }
     },
@@ -157,8 +169,23 @@ export default function BSBResult() {
     });
   };
 
-  const handleExport = () => {
-    exportBSBToExcel(assessment, results, stats, schoolName);
+  const retryFailedSaves = () => {
+    setSaving(true);
+    [...failedSaves.current].forEach((studentId) => flushSave(studentId));
+  };
+
+  const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    setExportError("");
+    try {
+      await exportBSBToExcel(assessment, results, stats, schoolName);
+    } catch (e) {
+      console.error("Excel export failed:", e);
+      setExportError("Excel faylini yaratib bo'lmadi. Sahifani yangilab, qayta urinib ko'ring.");
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handlePrint = () => {
@@ -168,7 +195,7 @@ export default function BSBResult() {
   const calculateStatistics = () => {
     if (!results || results.length === 0) return null;
     
-    const validResults = results.filter((r) => r.total > 0 || (r.scores || []).some((s) => s !== "" && s > 0));
+    const validResults = results.filter((r) => isResultEntered(r, "BSB"));
     const totals = (validResults.length > 0 ? validResults : results).map((r) => r.total || 0);
     const percentages = (validResults.length > 0 ? validResults : results).map((r) => r.percentage || 0);
 
@@ -205,7 +232,7 @@ export default function BSBResult() {
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="text-center text-gray-500 py-12">Yuklanmoqda...</div>
+        <LoadingState />
       </DashboardLayout>
     );
   }
@@ -233,12 +260,14 @@ export default function BSBResult() {
           <div className="flex gap-2 sm:gap-3">
             <button
               onClick={handleExport}
-              className="bg-emerald-600 text-white px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg hover:bg-emerald-700 font-medium text-xs sm:text-sm flex items-center gap-1.5 transition-colors shadow-xs"
+              disabled={exporting}
+              aria-busy={exporting}
+              className="bg-emerald-600 text-white px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg hover:bg-emerald-700 font-medium text-xs sm:text-sm flex items-center gap-1.5 transition-colors shadow-xs disabled:opacity-70 disabled:cursor-wait"
             >
               <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              Excelga yuklash
+              {exporting ? "Tayyorlanmoqda..." : "Excelga yuklash"}
             </button>
             <button
               onClick={handlePrint}
@@ -251,6 +280,11 @@ export default function BSBResult() {
             </button>
           </div>
         </div>
+        {exportError && (
+          <p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-700">
+            {exportError}
+          </p>
+        )}
       </div>
 
       {/* Official Result Document Wrapper */}
@@ -294,7 +328,7 @@ export default function BSBResult() {
         )}
 
         {/* Charts Section (Hidden in Print) */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 print:hidden mb-6">
+        <div className="grid grid-cols-1 xl:grid-cols-2 items-start gap-4 print:hidden mb-6">
           <StudentPercentageChart results={results} title="O'quvchilar BSB ko'rsatkichi (%)" />
           {stats && <TaskAverageChart tasks={assessment.tasks} taskAverages={stats.taskAverages} />}
         </div>
@@ -307,7 +341,7 @@ export default function BSBResult() {
                 <th className="px-3 py-2 border border-gray-300 text-center w-12">
                   T/r
                 </th>
-                <th className="px-3 py-2 border border-gray-300 text-left min-w-[160px] sm:min-w-[200px]">
+                <th className="px-3 py-2 border border-gray-300 text-left min-w-[160px] sm:min-w-[200px] sticky left-0 z-10 bg-gray-100 print:static">
                   F.I.Sh
                 </th>
                 {assessment.tasks.map((task) => (
@@ -352,7 +386,7 @@ export default function BSBResult() {
                   <td className="px-3 py-2 border border-gray-300 text-center font-medium text-gray-700">
                     {studentIndex + 1}
                   </td>
-                  <td className="px-3 py-2 border border-gray-300 font-semibold text-gray-900 whitespace-nowrap">
+                  <td className="px-3 py-2 border border-gray-300 font-semibold text-gray-900 whitespace-nowrap sticky left-0 z-[1] bg-white print:static">
                     {result.studentName}
                   </td>
                   {assessment.tasks.map((task, taskIndex) => (
@@ -413,11 +447,7 @@ export default function BSBResult() {
         </div>
       </div>
 
-      {saving && (
-        <div className="fixed bottom-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg text-xs font-semibold z-50 print:hidden">
-          Saqlanmoqda...
-        </div>
-      )}
+      <SaveStatus saving={saving} saveError={saveError} onRetry={retryFailedSaves} />
     </DashboardLayout>
   );
 }

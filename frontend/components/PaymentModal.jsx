@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { useTranslation } from "@/lib/useTranslation";
+import { createOnlinePayment, ONLINE_PAYMENT_ENABLED } from "@/lib/onlinePayment";
 
 const CARD_NUMBER = "9860011202074545";
 const CARDHOLDER = "Yakubov Abdulla";
@@ -15,6 +16,21 @@ export default function PaymentModal({ open, onClose, plan, billingPeriod, onCon
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
+  const [onlineError, setOnlineError] = useState("");
+
+  const payOnline = async () => {
+    if (redirecting) return;
+    setRedirecting(true);
+    setOnlineError("");
+    try {
+      const { payUrl } = await createOnlinePayment(plan, billingPeriod);
+      window.location.assign(payUrl);
+    } catch (error) {
+      setOnlineError(error?.message || t("inpay.error.generic"));
+      setRedirecting(false);
+    }
+  };
 
   const copyToClipboard = useCallback(async () => {
     try {
@@ -36,9 +52,12 @@ export default function PaymentModal({ open, onClose, plan, billingPeriod, onCon
   const periodSuffix = billingPeriod === "yearly" ? t("subscription.perYear") : t("subscription.perMonth");
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-6" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center overflow-y-auto bg-black/50 px-4 py-6" onClick={onClose}>
       <div
-        className="w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("paymentModal.title")}
+        className="my-auto w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-gray-200 p-5">
@@ -55,6 +74,31 @@ export default function PaymentModal({ open, onClose, plan, billingPeriod, onCon
         </div>
 
         <div className="space-y-5 p-5">
+          {ONLINE_PAYMENT_ENABLED && (
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={payOnline}
+                disabled={redirecting}
+                aria-busy={redirecting}
+                className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-70"
+              >
+                {redirecting ? t("inpay.redirecting") : `${t("inpay.payOnline")} — ${amount} UZS`}
+              </button>
+              <p className="text-xs text-gray-500">{t("inpay.onlineHint")}</p>
+              {onlineError && (
+                <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                  {onlineError}
+                </p>
+              )}
+              <div className="flex items-center gap-3 pt-1 text-xs text-gray-400">
+                <span className="h-px flex-1 bg-gray-200" />
+                {t("inpay.orManual")}
+                <span className="h-px flex-1 bg-gray-200" />
+              </div>
+            </div>
+          )}
+
           <p className="text-sm text-gray-600">{t("paymentModal.instructions")}</p>
 
           {/* Plan summary */}
