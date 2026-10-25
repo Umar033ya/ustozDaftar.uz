@@ -1,43 +1,28 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { useTranslation } from "@/lib/useTranslation";
-import { useAuth } from "@/lib/authContext";
-import { collection, query, orderBy, onSnapshot, updateDoc, doc, serverTimestamp, runTransaction } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-
-const PLAN_DURATION_DAYS = {
-  pro: { monthly: 30, yearly: 365 },
-  max: { monthly: 30, yearly: 365 },
-};
+import { authorizedFetch, useIsAdmin } from "@/lib/apiClient";
+import LoadingState from "./LoadingState";
 
 export default function AdminPayments() {
   const { t } = useTranslation();
-  const { currentUser } = useAuth();
+  const { isAdmin, checking } = useIsAdmin();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [processing, setProcessing] = useState(null);
-  const [isAdmin, setIsAdmin] = useState(false);
-
-  useEffect(() => {
-    // Check if user has admin claim
-    const checkAdmin = async () => {
-      if (currentUser) {
-        const idTokenResult = await currentUser.getIdTokenResult();
-        setIsAdmin(idTokenResult.claims.admin === true);
-      }
-    };
-    checkAdmin();
-  }, [currentUser]);
 
   useEffect(() => {
     if (!isAdmin) return;
 
-    const q = query(
-      collection(db, "paymentRequests"),
-      orderBy("createdAt", "desc")
-    );
+    // Reading is allowed to admins by the security rules; every change goes
+    // through the server (/api/admin/payments).
+    const q = query(collection(db, "paymentRequests"), orderBy("createdAt", "desc"));
 
     const unsubscribe = onSnapshot(
       q,
@@ -51,7 +36,7 @@ export default function AdminPayments() {
         setLoading(false);
       },
       (err) => {
-        console.error("Error fetching payment requests:", err);
+        console.error("Error fetching payment requests:", err?.code || err);
         setError(t("adminPayments.fetchError"));
         setLoading(false);
       }
@@ -60,90 +45,33 @@ export default function AdminPayments() {
     return () => unsubscribe();
   }, [isAdmin, t]);
 
-  const handleApprove = async (request) => {
-    if (!currentUser) return;
-    
+  // Approval runs on the server: it re-checks the admin claim, reads the
+  // user's current plan, applies the prorated upgrade policy exactly once and
+  // writes an audit log entry.
+  const runAction = async (request, action) => {
     setProcessing(request.id);
     setError("");
-
+    setNotice("");
     try {
-      // Use one transaction to atomically update the payment request and the
-      // target user's subscription. The `users/{uid}` document is updated
-      // directly by uid; the rules restrict that write to an admin who may only
-      // touch plan/planExpiry.
-      await runTransaction(db, async (transaction) => {
-        const requestRef = doc(db, "paymentRequests", request.id);
-        const userRef = doc(db, "users", request.uid);
-
-        // Get current document
-        const requestDoc = await transaction.get(requestRef);
-
-        if (!requestDoc.exists()) {
-          throw new Error("Payment request not found");
-        }
-
-        // Verify request is still pending
-        if (requestDoc.data().status !== "pending") {
-          throw new Error("Request is no longer pending");
-        }
-        
-        // Calculate subscription expiry
-        const durationDays = PLAN_DURATION_DAYS[request.plan]?.[request.billingPeriod] || 30;
-        const expiryDate = new Date();
-        expiryDate.setDate(expiryDate.getDate() + durationDays);
-        
-        // Update payment request status
-        transaction.update(requestRef, {
-          status: "approved",
-          processedAt: serverTimestamp(),
-          processedBy: currentUser.uid,
-        });
-        
-        // Update user's subscription
-        transaction.update(userRef, {
-          plan: request.plan,
-          planExpiry: expiryDate.getTime(),
-        });
+      const result = await authorizedFetch("/api/admin/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, source: "manual", id: request.id }),
       });
-
-      setRequests((prev) =>
-        prev.map((r) =>
-          r.id === request.id ? { ...r, status: "approved" } : r
-        )
-      );
+      if (action === "approve" && result.planExpiry) {
+        setNotice(`Tasdiqlandi. Tarif ${new Date(result.planExpiry).toLocaleDateString("uz-UZ", { timeZone: "Asia/Tashkent" })} gacha faol.`);
+      }
     } catch (err) {
-      console.error("Error approving request:", err);
-      setError(t("adminPayments.approveError"));
+      setError(err.message || t(action === "approve" ? "adminPayments.approveError" : "adminPayments.rejectError"));
     } finally {
       setProcessing(null);
     }
   };
 
-  const handleReject = async (request) => {
-    if (!currentUser) return;
-    
-    setProcessing(request.id);
-    setError("");
+  const handleApprove = (request) => runAction(request, "approve");
+  const handleReject = (request) => runAction(request, "reject");
 
-    try {
-      await updateDoc(doc(db, "paymentRequests", request.id), {
-        status: "rejected",
-        processedAt: serverTimestamp(),
-        processedBy: currentUser.uid,
-      });
-
-      setRequests((prev) =>
-        prev.map((r) =>
-          r.id === request.id ? { ...r, status: "rejected" } : r
-        )
-      );
-    } catch (err) {
-      console.error("Error rejecting request:", err);
-      setError(t("adminPayments.rejectError"));
-    } finally {
-      setProcessing(null);
-    }
-  };
+  if (checking) return <LoadingState />;
 
   if (!isAdmin) {
     return (
@@ -153,23 +81,28 @@ export default function AdminPayments() {
     );
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-sm text-gray-500">{t("loading")}</div>
-      </div>
-    );
-  }
+  if (loading) return <LoadingState label={t("loading")} />;
 
   const pendingRequests = requests.filter((r) => r.status === "pending");
   const processedRequests = requests.filter((r) => r.status !== "pending");
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">{t("adminPayments.title")}</h1>
-        <p className="mt-1 text-sm text-gray-600">{t("adminPayments.subtitle")}</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">{t("adminPayments.title")}</h1>
+          <p className="mt-1 text-sm text-gray-600">{t("adminPayments.subtitle")}</p>
+        </div>
+        <Link href="/dashboard/admin" className="text-sm font-medium text-blue-600 hover:text-blue-800">
+          Moliyaviy hisobot →
+        </Link>
       </div>
+
+      {notice && (
+        <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-800">
+          {notice}
+        </div>
+      )}
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-700">
@@ -235,6 +168,7 @@ function PaymentRequestRow({ request, onApprove, onReject, processing }) {
     pending: "bg-amber-100 text-amber-800",
     approved: "bg-emerald-100 text-emerald-800",
     rejected: "bg-red-100 text-red-800",
+    refunded: "bg-gray-200 text-gray-800",
   };
 
   const planNames = {
@@ -255,7 +189,7 @@ function PaymentRequestRow({ request, onApprove, onReject, processing }) {
             <span className="text-sm font-semibold text-gray-900">{request.userName || request.userEmail}</span>
             <span className="text-xs text-gray-500">{request.userEmail}</span>
             <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${statusColors[request.status]}`}>
-              {t(`adminPayments.status.${request.status}`)}
+              {t("adminPayments.status")?.[request.status] || request.status}
             </span>
           </div>
           

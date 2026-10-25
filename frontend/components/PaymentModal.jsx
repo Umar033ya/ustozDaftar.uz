@@ -2,14 +2,11 @@
 
 import { useCallback, useState } from "react";
 import { useTranslation } from "@/lib/useTranslation";
+import { formatSom, planOffer } from "@/lib/plans";
 
 const CARD_NUMBER = "9860011202074545";
 const CARDHOLDER = "Yakubov Abdulla";
 
-const PLAN_AMOUNTS = {
-  pro: { monthly: "20,000", yearly: "180,000" },
-  max: { monthly: "45,000", yearly: "480,000" },
-};
 
 export default function PaymentModal({ open, onClose, plan, billingPeriod, onContinue }) {
   const { t } = useTranslation();
@@ -29,20 +26,24 @@ export default function PaymentModal({ open, onClose, plan, billingPeriod, onCon
 
   if (!open || !plan || !billingPeriod) return null;
 
-  const amount = PLAN_AMOUNTS[plan]?.[billingPeriod] || "";
+  const offer = planOffer(plan, billingPeriod);
+  const amount = offer ? formatSom(offer.amount) : "";
   const planName = plan === "max" ? t("subscription.max") : t("subscription.pro");
   const periodName =
     billingPeriod === "yearly" ? t("subscription.yearlyBilling") : t("subscription.monthlyBilling");
   const periodSuffix = billingPeriod === "yearly" ? t("subscription.perYear") : t("subscription.perMonth");
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-6" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center overflow-y-auto bg-black/50 px-4 py-6" onClick={onClose}>
       <div
-        className="w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("sub.manual.title")}
+        className="my-auto w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-gray-200 p-5">
-          <h2 className="text-lg font-bold text-gray-900">{t("paymentModal.title")}</h2>
+          <h2 className="text-lg font-bold text-gray-900">{t("sub.manual.title")}</h2>
           <button
             onClick={onClose}
             className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
@@ -55,7 +56,8 @@ export default function PaymentModal({ open, onClose, plan, billingPeriod, onCon
         </div>
 
         <div className="space-y-5 p-5">
-          <p className="text-sm text-gray-600">{t("paymentModal.instructions")}</p>
+          {/* Manual transfer only; online (inPAY) payment lives on /dashboard/subscription. */}
+          <p className="text-sm text-gray-600">{t("sub.manual.desc")}</p>
 
           {/* Plan summary */}
           <div className="grid grid-cols-2 gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4">

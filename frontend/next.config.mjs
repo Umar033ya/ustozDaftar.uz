@@ -9,6 +9,14 @@ const nextConfig = {
   // Strict-mode for React (catches potential issues in development)
   reactStrictMode: true,
 
+  // Admin pages moved under /dashboard/admin; old links keep working.
+  async redirects() {
+    return [
+      { source: "/dashboard/admin/finance", destination: "/dashboard/admin", permanent: true },
+      { source: "/dashboard/admin-payments", destination: "/dashboard/admin/payments", permanent: true },
+    ];
+  },
+
   // Security headers applied to every route
   async headers() {
     return [

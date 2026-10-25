@@ -1,10 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import Logo from "@/components/Logo";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
-import { useSubscriptionFlow } from "@/components/SubscriptionFlow";
 import { useAuth } from "@/lib/authContext";
 import { useTranslation } from "@/lib/useTranslation";
 
@@ -22,48 +20,6 @@ const STEPS = ["steps.step1", "steps.step2", "steps.step3"];
 export default function Home() {
   const { currentUser } = useAuth();
   const { t } = useTranslation();
-  const { openPurchase, dialogs } = useSubscriptionFlow();
-  const [period, setPeriod] = useState("monthly");
-
-  const plans = [
-    {
-      id: "free",
-      name: t("pricing.free.name"),
-      tagline: t("pricing.free.tagline"),
-      price: t("pricing.amount.free"),
-      periodLabel: t("pricing.period.forever"),
-      features: t("pricing.free.features"),
-      featuresKey: "pricing.free.features",
-      highlight: false,
-      purchasable: false,
-    },
-    {
-      id: "pro",
-      name: t("pricing.pro.name"),
-      tagline: t("pricing.pro.tagline"),
-      price: period === "yearly" ? t("pricing.amount.proYearly") : t("pricing.amount.proMonthly"),
-      periodLabel: "",
-      featuresKey: "pricing.pro.features",
-      highlight: true,
-      purchasable: true,
-    },
-    {
-      id: "max",
-      name: t("pricing.max.name"),
-      tagline: t("pricing.max.tagline"),
-      price: period === "yearly" ? t("pricing.amount.maxYearly") : t("pricing.amount.maxMonthly"),
-      periodLabel: "",
-      featuresKey: "pricing.max.features",
-      highlight: false,
-      purchasable: true,
-    },
-  ];
-
-  // Anyone can see the plan details and the manual payment instructions. The
-  // payment request itself still requires a signed-in account.
-  const handlePurchase = (planId) => {
-    openPurchase(planId, period);
-  };
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
@@ -85,9 +41,6 @@ export default function Home() {
                 </a>
                 <a href="#how-it-works" className="text-gray-700 hover:text-blue-600 font-medium">
                   {t("nav.howItWorks")}
-                </a>
-                <a href="#pricing" className="text-gray-700 hover:text-blue-600 font-medium">
-                  {t("nav.pricing")}
                 </a>
               </div>
               <div className="hidden sm:block w-px h-6 bg-gray-200" />
@@ -200,114 +153,14 @@ export default function Home() {
       <section className="py-16 sm:py-20 bg-gradient-to-r from-blue-600 to-green-600">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-2xl sm:text-3xl font-bold text-white mb-6">{t("home.cta.title")}</h2>
-          <p className="text-lg sm:text-xl text-white mb-8">{t("home.cta.subtitle")}</p>
+          <p className="text-lg sm:text-xl text-white mb-4">{t("home.cta.subtitle")}</p>
+          <p className="text-sm text-blue-50 mb-8 max-w-2xl mx-auto">{t("home.plans.note")}</p>
           <Link
             href="/register"
             className="bg-white text-blue-600 px-8 py-3 rounded-lg hover:bg-gray-100 font-medium text-lg"
           >
             {t("home.cta.button")}
           </Link>
-        </div>
-      </section>
-
-      {/* Pricing — placed below the introductory content, above the footer */}
-      <section id="pricing" className="py-16 sm:py-20 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-10">
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3">{t("pricing.title")}</h2>
-            <p className="text-gray-600 max-w-2xl mx-auto">{t("pricing.subtitle")}</p>
-
-            {/* Billing period toggle */}
-            <div className="mt-6 inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
-              {[
-                { id: "monthly", label: t("subscription.monthlyBilling") },
-                { id: "yearly", label: t("subscription.yearlyBilling") },
-              ].map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => setPeriod(option.id)}
-                  className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
-                    period === option.id ? "bg-white text-gray-900 shadow-sm" : "text-gray-600 hover:text-gray-900"
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-6 lg:gap-8 items-start">
-            {plans.map((plan) => {
-              const features = t(plan.featuresKey);
-              return (
-                <div
-                  key={plan.id}
-                  className={`relative bg-white rounded-2xl border p-6 flex flex-col h-full ${
-                    plan.highlight ? "border-blue-500 shadow-lg md:-mt-2" : "border-gray-200 shadow-sm"
-                  }`}
-                >
-                  {plan.highlight && (
-                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-xs font-semibold px-3 py-1 rounded-full">
-                      {t("pricing.popular")}
-                    </span>
-                  )}
-
-                  <h3 className="text-lg font-bold text-gray-900">{plan.name}</h3>
-                  <p className="text-sm text-gray-500 mt-1">{plan.tagline}</p>
-
-                  <div className="mt-4 mb-5">
-                    <span className="text-2xl font-bold text-gray-900">{plan.price}</span>
-                    {plan.periodLabel && <span className="text-sm text-gray-500 ml-1">{plan.periodLabel}</span>}
-                  </div>
-
-                  <ul className="space-y-2.5 flex-1">
-                    {(Array.isArray(features) ? features : []).map((feature, index) => (
-                      <li key={index} className="flex items-start gap-2">
-                        <svg
-                          className={`h-4 w-4 flex-shrink-0 mt-0.5 ${
-                            plan.id === "max" ? "text-purple-600" : plan.id === "pro" ? "text-blue-600" : "text-gray-500"
-                          }`}
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l4-4a1 1 0 011.414 0z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                        <span className="text-sm text-gray-700">{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-
-                  <div className="mt-6">
-                    {plan.purchasable ? (
-                      <button
-                        type="button"
-                        onClick={() => handlePurchase(plan.id)}
-                        className={`w-full rounded-lg py-2.5 text-sm font-medium text-white transition-colors ${
-                          plan.id === "max" ? "bg-purple-600 hover:bg-purple-700" : "bg-blue-600 hover:bg-blue-700"
-                        }`}
-                      >
-                        {t("subscription.purchasePlan", { plan: plan.name })}
-                      </button>
-                    ) : (
-                      <Link
-                        href={currentUser ? "/dashboard" : "/register"}
-                        className="block w-full text-center rounded-lg border border-gray-300 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
-                      >
-                        {currentUser ? t("nav.dashboard") : t("home.hero.start")}
-                      </Link>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <p className="mt-8 text-center text-xs text-gray-500">{t("paymentModal.instructionText")}</p>
         </div>
       </section>
 
@@ -321,7 +174,6 @@ export default function Home() {
         </div>
       </footer>
 
-      {dialogs}
     </div>
   );
 }

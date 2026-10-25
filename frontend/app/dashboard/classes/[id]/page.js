@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
+import LoadingState from "@/components/LoadingState";
 import AiStudentImport from "@/components/AiStudentImport";
 import { useAuth } from "@/lib/authContext";
 import {
@@ -33,6 +34,8 @@ export default function ClassDetail() {
   const [editError, setEditError] = useState("");
   const [savingStudent, setSavingStudent] = useState(false);
   const [aiNotice, setAiNotice] = useState("");
+  // Namesakes are real students: a repeated name only needs a second, confirming click.
+  const [confirmedDuplicate, setConfirmedDuplicate] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -86,10 +89,12 @@ export default function ClassDetail() {
     const exists = students.some(
       (s) => s.name.toLowerCase() === trimmedName.toLowerCase()
     );
-    if (exists) {
-      setError("Bunday ismli o'quvchi bu sinfda allaqachon mavjud");
+    if (exists && confirmedDuplicate !== trimmedName) {
+      setConfirmedDuplicate(trimmedName);
+      setError("Bu sinfda shu ismli o'quvchi bor. Bu boshqa o'quvchi bo'lsa, qo'shish uchun yana bir marta bosing.");
       return;
     }
+    setConfirmedDuplicate("");
 
     try {
       setSavingStudent(true);
@@ -168,10 +173,12 @@ export default function ClassDetail() {
     const exists = students.some(
       (s) => s.id !== editingStudentId && s.name.toLowerCase() === trimmedName.toLowerCase()
     );
-    if (exists) {
-      setEditError("Bunday ismli o'quvchi bu sinfda allaqachon mavjud");
+    if (exists && confirmedDuplicate !== trimmedName) {
+      setConfirmedDuplicate(trimmedName);
+      setEditError("Bu sinfda shu ismli o'quvchi bor. Bu boshqa o'quvchi bo'lsa, saqlash uchun yana bir marta bosing.");
       return;
     }
+    setConfirmedDuplicate("");
 
     try {
       await updateStudentName(currentUser.uid, classId, editingStudentId, trimmedName);
@@ -195,7 +202,7 @@ export default function ClassDetail() {
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="text-center text-gray-500 py-12">Yuklanmoqda...</div>
+        <LoadingState />
       </DashboardLayout>
     );
   }

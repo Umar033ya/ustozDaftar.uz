@@ -1,140 +1,149 @@
 "use client";
 
-export default function StudentPercentageChart({ results = [], title = "O'quvchilar ko'rsatkichi (%)" }) {
+import { useElementWidth } from "@/lib/useElementWidth";
+import { bandColor, ChartLegend } from "@/lib/chartColors";
+import { isResultEntered } from "@/lib/resultStats";
+
+const ROW_HEIGHT = 32;
+const BAR_HEIGHT = 18;
+const TOP_PADDING = 8;
+const AXIS_HEIGHT = 22;
+const VALUE_LABEL_WIDTH = 46;
+// Conservative glyph width of a 12px/500 font (Cyrillic capitals are wide), used
+// to fit names without measuring text; the full name is in the <title> tooltip.
+const NAME_CHAR_WIDTH = 7.6;
+
+function fitName(name, maxWidth) {
+  const maxChars = Math.max(4, Math.floor(maxWidth / NAME_CHAR_WIDTH));
+  return name.length > maxChars ? `${name.slice(0, maxChars - 1).trimEnd()}…` : name;
+}
+
+/**
+ * One bar per student. Every student of the list is drawn: a student without
+ * an entered result is shown as "kiritilmagan" (no bar), never as a 0% bar,
+ * so a real 0 and a missing score cannot be confused.
+ *
+ * `type` ("BSB" | "ChSB") decides "entered" for raw result rows; rows that
+ * were already aggregated may carry an explicit `entered` flag instead.
+ */
+export default function StudentPercentageChart({ results = [], type, title = "O'quvchilar ko'rsatkichi (%)" }) {
+  const [containerRef, width] = useElementWidth();
+
   if (!results || results.length === 0) {
     return (
-      <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200 print:hidden mb-6 text-center text-gray-500">
+      <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200 print:hidden text-center text-gray-500 min-w-0">
         <p className="font-semibold text-gray-700 mb-1">{title}</p>
         <p className="text-sm">Natijalar kiritilmagan</p>
       </div>
     );
   }
 
-  // Filter students who have valid scores
-  const activeResults = results.map((r) => ({
+  const rows = results.map((r) => ({
     name: r.studentName || "O'quvchi",
+    entered: typeof r.entered === "boolean" ? r.entered : type ? isResultEntered(r, type) : true,
     percentage: Math.min(100, Math.max(0, parseFloat(r.percentage) || 0)),
-    total: r.total === "" ? 0 : r.total,
   }));
+  const enteredCount = rows.filter((row) => row.entered).length;
 
-  const getBarColor = (pct) => {
-    if (pct >= 80) return "#10B981"; // Emerald green
-    if (pct >= 60) return "#3B82F6"; // Blue
-    if (pct >= 40) return "#F59E0B"; // Amber
-    return "#EF4444"; // Red
-  };
-
-  const itemHeight = 36;
-  const chartHeight = Math.max(120, activeResults.length * itemHeight + 30);
+  // The name column takes about a third of the width, within readable bounds.
+  const nameWidth = Math.round(Math.min(220, Math.max(96, width * 0.34)));
+  const barX = nameWidth + 10;
+  const barWidthMax = Math.max(40, width - barX - VALUE_LABEL_WIDTH);
+  const chartHeight = TOP_PADDING + rows.length * ROW_HEIGHT + AXIS_HEIGHT;
 
   return (
-    <div className="bg-white p-4 sm:p-6 rounded-xl shadow-xs border border-gray-200 print:hidden mb-6">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-base font-bold text-gray-900">{title}</h3>
-        <div className="flex items-center gap-3 text-xs">
-          <span className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span> 80-100%
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></span> 60-79%
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span> 40-59%
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block"></span> &lt;40%
-          </span>
+    <div className="bg-white p-4 sm:p-6 rounded-xl shadow-xs border border-gray-200 print:hidden min-w-0">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-4">
+        <div>
+          <h3 className="text-base font-bold text-gray-900">{title}</h3>
+          {enteredCount < rows.length && (
+            <p className="text-xs text-gray-500 mt-0.5">
+              {enteredCount} / {rows.length} o&apos;quvchi natijasi kiritilgan
+            </p>
+          )}
         </div>
+        <ChartLegend />
       </div>
 
-      <div className="w-full overflow-x-auto">
-        <svg
-          className="w-full min-w-[320px]"
-          height={chartHeight}
-          viewBox={`0 0 600 ${chartHeight}`}
-          preserveAspectRatio="none"
-        >
-          {/* Background grid lines */}
-          {[0, 25, 50, 75, 100].map((val) => {
-            const x = 160 + (val / 100) * 380;
-            return (
-              <g key={val}>
-                <line
-                  x1={x}
-                  y1={10}
-                  x2={x}
-                  y2={chartHeight - 20}
-                  stroke="#E5E7EB"
-                  strokeDasharray="3 3"
-                />
-                <text
-                  x={x}
-                  y={chartHeight - 5}
-                  fontSize="10"
-                  fill="#9CA3AF"
-                  textAnchor="middle"
-                >
-                  {val}%
-                </text>
-              </g>
-            );
-          })}
+      <div ref={containerRef} className="w-full" style={{ minHeight: chartHeight }}>
+        {width > 0 && (
+          <svg
+            width={width}
+            height={chartHeight}
+            viewBox={`0 0 ${width} ${chartHeight}`}
+            role="img"
+            aria-label={title}
+            className="block"
+          >
+            {[0, 25, 50, 75, 100].map((val) => {
+              const x = barX + (val / 100) * barWidthMax;
+              return (
+                <g key={val}>
+                  <line
+                    x1={x}
+                    y1={TOP_PADDING - 4}
+                    x2={x}
+                    y2={chartHeight - AXIS_HEIGHT + 2}
+                    stroke="#E5E7EB"
+                    strokeDasharray="3 3"
+                  />
+                  <text x={x} y={chartHeight - 6} fontSize="10" fill="#6B7280" textAnchor="middle">
+                    {val}%
+                  </text>
+                </g>
+              );
+            })}
 
-          {/* Student bars */}
-          {activeResults.map((item, idx) => {
-            const y = idx * itemHeight + 15;
-            const barWidth = (item.percentage / 100) * 380;
-            const barColor = getBarColor(item.percentage);
+            {rows.map((item, idx) => {
+              const y = TOP_PADDING + idx * ROW_HEIGHT + (ROW_HEIGHT - BAR_HEIGHT) / 2;
+              if (!item.entered) {
+                return (
+                  <g key={idx}>
+                    <title>{`${item.name}: natija kiritilmagan`}</title>
+                    <text x={nameWidth} y={y + BAR_HEIGHT / 2 + 4} fontSize="12" fontWeight="500" fill="#9CA3AF" textAnchor="end">
+                      {fitName(item.name, nameWidth)}
+                    </text>
+                    <rect x={barX} y={y} width={barWidthMax} height={BAR_HEIGHT} rx={4} fill="#F9FAFB" stroke="#E5E7EB" strokeDasharray="4 3" />
+                    <text x={barX + 8} y={y + BAR_HEIGHT / 2 + 4} fontSize="11" fill="#9CA3AF">
+                      kiritilmagan
+                    </text>
+                  </g>
+                );
+              }
+              const barWidth = (item.percentage / 100) * barWidthMax;
+              const color = bandColor(item.percentage);
 
-            return (
-              <g key={idx} className="group transition-all">
-                {/* Student Name */}
-                <text
-                  x={150}
-                  y={y + 14}
-                  fontSize="12"
-                  fontWeight="500"
-                  fill="#374151"
-                  textAnchor="end"
-                >
-                  {item.name.length > 20 ? item.name.slice(0, 18) + "..." : item.name}
-                </text>
-
-                {/* Bar Background Track */}
-                <rect
-                  x={160}
-                  y={y}
-                  width={380}
-                  height={20}
-                  rx={4}
-                  fill="#F3F4F6"
-                />
-
-                {/* Animated Score Bar */}
-                <rect
-                  x={160}
-                  y={y}
-                  width={Math.max(barWidth, 4)}
-                  height={20}
-                  rx={4}
-                  fill={barColor}
-                  className="transition-all duration-500 ease-out"
-                />
-
-                {/* Score Text Percentage */}
-                <text
-                  x={165 + barWidth}
-                  y={y + 14}
-                  fontSize="11"
-                  fontWeight="600"
-                  fill={item.percentage > 90 ? "#374151" : barColor}
-                >
-                  {item.percentage.toFixed(1)}%
-                </text>
-              </g>
-            );
-          })}
-        </svg>
+              return (
+                <g key={idx}>
+                  <title>{`${item.name}: ${item.percentage.toFixed(1)}%`}</title>
+                  <text
+                    x={nameWidth}
+                    y={y + BAR_HEIGHT / 2 + 4}
+                    fontSize="12"
+                    fontWeight="500"
+                    fill="#374151"
+                    textAnchor="end"
+                  >
+                    {fitName(item.name, nameWidth)}
+                  </text>
+                  <rect x={barX} y={y} width={barWidthMax} height={BAR_HEIGHT} rx={4} fill="#F3F4F6" />
+                  <rect
+                    x={barX}
+                    y={y}
+                    width={Math.max(barWidth, 3)}
+                    height={BAR_HEIGHT}
+                    rx={4}
+                    fill={color}
+                    className="transition-all duration-500 ease-out"
+                  />
+                  <text x={barX + barWidth + 6} y={y + BAR_HEIGHT / 2 + 4} fontSize="11" fontWeight="600" fill={color}>
+                    {item.percentage.toFixed(1)}%
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        )}
       </div>
     </div>
   );

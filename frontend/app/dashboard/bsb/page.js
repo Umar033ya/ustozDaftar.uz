@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
+import LoadingState from "@/components/LoadingState";
 import { useAuth } from "@/lib/authContext";
 import { getAssessments, deleteAssessment, getResults } from "@/lib/firestoreService";
 
@@ -80,7 +81,7 @@ export default function BSBList() {
 
       {/* Assessments List */}
       {loading ? (
-        <div className="text-center text-gray-500 py-12">Yuklanmoqda...</div>
+        <LoadingState />
       ) : assessments.length === 0 ? (
         <div className="bg-white rounded-xl shadow-xs p-8 sm:p-12 border border-gray-200 text-center">
           <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

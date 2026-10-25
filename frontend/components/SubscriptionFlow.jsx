@@ -1,35 +1,29 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import PlanInfoModal from "./PlanInfoModal";
 import PaymentModal from "./PaymentModal";
 import PaymentRequestForm from "./PaymentRequestForm";
 
 /**
- * Owns the manual subscription flow:
- *   plan info  ->  payment instructions  ->  payment request (admin review)
+ * Manual card-transfer flow, kept separate from inPAY:
+ *   transfer instructions  ->  payment request (admin review)
  *
- * Returns the trigger callbacks plus the dialog elements to render. Nothing here
+ * Returns the trigger callback plus the dialog elements to render. Nothing here
  * activates a plan — a request simply lands as `pending` for an admin to review.
+ * Online (inPAY) payment lives on /dashboard/subscription.
  */
 export function useSubscriptionFlow() {
-  const [stage, setStage] = useState(null); // null | "info" | "payment" | "request"
+  const [stage, setStage] = useState(null); // null | "payment" | "request"
   const [selection, setSelection] = useState(null); // { plan, billingPeriod }
 
   const close = useCallback(() => setStage(null), []);
-  const openPlanInfo = useCallback(() => setStage("info"), []);
-  const openPurchase = useCallback((plan, billingPeriod = "monthly") => {
+  const openManual = useCallback((plan, billingPeriod = "monthly") => {
     setSelection({ plan, billingPeriod });
     setStage("payment");
   }, []);
 
   const dialogs = (
     <>
-      <PlanInfoModal
-        open={stage === "info"}
-        onClose={close}
-        onPurchase={(plan, billingPeriod) => openPurchase(plan, billingPeriod)}
-      />
       <PaymentModal
         open={stage === "payment"}
         onClose={close}
@@ -46,5 +40,5 @@ export function useSubscriptionFlow() {
     </>
   );
 
-  return { openPlanInfo, openPurchase, close, stage, selection, dialogs };
+  return { openManual, close, stage, selection, dialogs };
 }

@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
+import { isResultEntered } from "./resultStats.js";
 
 /**
  * Trigger file download in browser
@@ -15,7 +16,51 @@ function downloadBuffer(buffer, filename) {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  // Revoking synchronously can cancel the download in Safari/Firefox before it starts.
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+
+/** 1-based column index -> Excel column letters (1 -> A, 27 -> AA). */
+export function columnLetter(index) {
+  let n = index;
+  let letters = "";
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    letters = String.fromCharCode(65 + rem) + letters;
+    n = Math.floor((n - 1) / 26);
+  }
+  return letters;
+}
+
+/** Characters Windows/macOS reject in file names are replaced, Unicode names are kept. */
+export function safeFilename(name) {
+  return name.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "-").replace(/\s+/g, " ").trim();
+}
+
+function escapeXml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * Cached point values for a chart series. Excel desktop recalculates charts from
+ * the cell references on open, but viewers that do not (Excel mobile, previews,
+ * Google Sheets import) render a chart without a cache as empty.
+ */
+function strCache(values) {
+  const points = values.map((v, i) => `<c:pt idx="${i}"><c:v>${escapeXml(v)}</c:v></c:pt>`).join("");
+  return `<c:strCache><c:ptCount val="${values.length}"/>${points}</c:strCache>`;
+}
+
+function numCache(values, formatCode) {
+  // a blank cell (no result entered) is a missing point, not a 0 bar
+  const points = values
+    .map((v, i) => (v === null || v === undefined ? "" : `<c:pt idx="${i}"><c:v>${Number(v) || 0}</c:v></c:pt>`))
+    .join("");
+  return `<c:numCache><c:formatCode>${formatCode}</c:formatCode><c:ptCount val="${values.length}"/>${points}</c:numCache>`;
 }
 
 /**
@@ -41,7 +86,7 @@ function applyTableBorders(sheet, startRow, endRow, startCol, endCol) {
 /**
  * Inject OpenXML native chart into Excel zip package
  */
-async function attachNativeChartsToZip(excelBuffer, sheetName, numStudents, numTasks, isBSB) {
+async function attachNativeChartsToZip(excelBuffer, sheetName, numStudents, numTasks, isBSB, series) {
   try {
     const zip = await JSZip.loadAsync(excelBuffer);
 
@@ -83,7 +128,7 @@ async function attachNativeChartsToZip(excelBuffer, sheetName, numStudents, numT
     // Table rows math
     const studentStartRow = 7;
     const studentEndRow = 6 + numStudents;
-    const pctColLetter = isBSB ? String.fromCharCode(67 + numTasks + 1) : "D"; // 'G' for 3 tasks, 'D' for ChSB
+    const pctColLetter = isBSB ? columnLetter(4 + numTasks) : "D"; // 'G' for 3 tasks, 'D' for ChSB
 
     // drawing1.xml placement
     const chart1TopRow = studentEndRow + 3;
@@ -158,9 +203,9 @@ async function attachNativeChartsToZip(excelBuffer, sheetName, numStudents, numT
         <c:grouping val="standard"/>
         <c:ser>
           <c:idx val="0"/><c:order val="0"/>
-          <c:tx><c:strRef><c:f>'${sheetName}'!$${pctColLetter}$5</c:f></c:strRef></c:tx>
-          <c:cat><c:strRef><c:f>'${sheetName}'!$B$${studentStartRow}:$B$${studentEndRow}</c:f></c:strRef></c:cat>
-          <c:val><c:numRef><c:f>'${sheetName}'!$${pctColLetter}$${studentStartRow}:$${pctColLetter}$${studentEndRow}</c:f></c:numRef></c:val>
+          <c:tx><c:strRef><c:f>'${sheetName}'!$${pctColLetter}$5</c:f>${strCache(["%"])}</c:strRef></c:tx>
+          <c:cat><c:strRef><c:f>'${sheetName}'!$B$${studentStartRow}:$B$${studentEndRow}</c:f>${strCache(series.studentNames)}</c:strRef></c:cat>
+          <c:val><c:numRef><c:f>'${sheetName}'!$${pctColLetter}$${studentStartRow}:$${pctColLetter}$${studentEndRow}</c:f>${numCache(series.studentPcts, "0.0%")}</c:numRef></c:val>
         </c:ser>
         <c:axId val="50000000"/><c:axId val="50000001"/>
       </c:barChart>
@@ -180,7 +225,7 @@ async function attachNativeChartsToZip(excelBuffer, sheetName, numStudents, numT
     if (isBSB) {
       const summaryRow = studentEndRow + 1;
       const firstTaskCol = "C";
-      const lastTaskCol = String.fromCharCode(67 + numTasks - 1);
+      const lastTaskCol = columnLetter(2 + numTasks);
 
       const chart2Xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
@@ -197,8 +242,8 @@ async function attachNativeChartsToZip(excelBuffer, sheetName, numStudents, numT
         <c:grouping val="standard"/>
         <c:ser>
           <c:idx val="0"/><c:order val="0"/>
-          <c:cat><c:strRef><c:f>'${sheetName}'!$${firstTaskCol}$5:$${lastTaskCol}$5</c:f></c:strRef></c:cat>
-          <c:val><c:numRef><c:f>'${sheetName}'!$${firstTaskCol}$${summaryRow}:$${lastTaskCol}$${summaryRow}</c:f></c:numRef></c:val>
+          <c:cat><c:strRef><c:f>'${sheetName}'!$${firstTaskCol}$5:$${lastTaskCol}$5</c:f>${strCache(series.taskLabels)}</c:strRef></c:cat>
+          <c:val><c:numRef><c:f>'${sheetName}'!$${firstTaskCol}$${summaryRow}:$${lastTaskCol}$${summaryRow}</c:f>${numCache(series.taskAvgs, "0.0%")}</c:numRef></c:val>
         </c:ser>
         <c:axId val="60000000"/><c:axId val="60000001"/>
       </c:barChart>
@@ -227,6 +272,12 @@ async function attachNativeChartsToZip(excelBuffer, sheetName, numStudents, numT
  * Export BSB Results to Excel with official Uzbek school layout
  */
 export async function exportBSBToExcel(assessment, results, stats, schoolName = "") {
+  const { buffer, filename } = await buildBSBWorkbook(assessment, results, stats, schoolName);
+  downloadBuffer(buffer, filename);
+}
+
+/** Build the BSB workbook without downloading it (used by the export and the tests). */
+export async function buildBSBWorkbook(assessment, results, stats, schoolName = "") {
   const workbook = new ExcelJS.Workbook();
   const sheetName = "BSB Natijalari";
   const sheet = workbook.addWorksheet(sheetName, {
@@ -237,7 +288,7 @@ export async function exportBSBToExcel(assessment, results, stats, schoolName = 
   const numTasks = assessment.tasks.length;
   const numStudents = results.length; // EXACTLY N students!
   const totalCols = 2 + numTasks + 2; // T/r, F.I.Sh, tasks..., Jami, %
-  const endColLetter = String.fromCharCode(64 + totalCols);
+  const endColLetter = columnLetter(totalCols);
 
   // Row 1: School Name Banner
   sheet.mergeCells(`A1:${endColLetter}1`);
@@ -301,12 +352,17 @@ export async function exportBSBToExcel(assessment, results, stats, schoolName = 
   results.forEach((result, idx) => {
     const rowNum = 7 + idx;
     const r = sheet.getRow(rowNum);
+    // Unentered scores stay truly blank (null). An empty string would be written
+    // as a text cell, which Excel counts in COUNTA and flags as text.
+    const scores = Array.isArray(result.scores) ? result.scores : [];
     const studentScores = assessment.tasks.map((_, i) =>
-      result.scores[i] === "" || result.scores[i] === undefined ? "" : Number(result.scores[i])
+      scores[i] === "" || scores[i] === undefined || scores[i] === null ? null : Number(scores[i])
     );
-    const pctVal = (result.percentage || 0) / 100;
+    // A student with no entered score gets blank total/percentage, a real 0 stays 0.
+    const entered = isResultEntered(result, "BSB");
+    const pctVal = entered ? (Number(result.percentage) || 0) / 100 : null;
 
-    r.values = [idx + 1, result.studentName, ...studentScores, result.total || 0, pctVal];
+    r.values = [idx + 1, result.studentName, ...studentScores, entered ? Number(result.total) || 0 : null, pctVal];
     r.height = 20;
 
     // Styling
@@ -365,16 +421,27 @@ export async function exportBSBToExcel(assessment, results, stats, schoolName = 
 
   // Build Excel Buffer & Attach Native OpenXML Chart
   const rawBuffer = await workbook.xlsx.writeBuffer();
-  const finalBuffer = await attachNativeChartsToZip(rawBuffer, sheetName, numStudents, numTasks, true);
+  const finalBuffer = await attachNativeChartsToZip(rawBuffer, sheetName, numStudents, numTasks, true, {
+    studentNames: results.map((r) => r.studentName || ""),
+    studentPcts: results.map((r) => (isResultEntered(r, "BSB") ? (Number(r.percentage) || 0) / 100 : null)),
+    taskLabels: taskHeaderLabels,
+    taskAvgs,
+  });
 
-  const filename = `${assessment.className}_${assessment.subject}_BSB-${assessment.number}.xlsx`;
-  downloadBuffer(finalBuffer, filename);
+  const filename = safeFilename(`${assessment.className}_${assessment.subject}_BSB-${assessment.number}.xlsx`);
+  return { buffer: finalBuffer, filename };
 }
 
 /**
  * Export ChSB Results to Excel with official Uzbek school layout
  */
 export async function exportChSBToExcel(assessment, results, stats, schoolName = "") {
+  const { buffer, filename } = await buildChSBWorkbook(assessment, results, stats, schoolName);
+  downloadBuffer(buffer, filename);
+}
+
+/** Build the ChSB workbook without downloading it (used by the export and the tests). */
+export async function buildChSBWorkbook(assessment, results, stats, schoolName = "") {
   const workbook = new ExcelJS.Workbook();
   const sheetName = "ChSB Natijalari";
   const sheet = workbook.addWorksheet(sheetName, {
@@ -445,8 +512,9 @@ export async function exportChSBToExcel(assessment, results, stats, schoolName =
   results.forEach((result, idx) => {
     const rowNum = 7 + idx;
     const r = sheet.getRow(rowNum);
-    const scoreVal = result.total === "" || result.total === undefined ? "" : Number(result.total);
-    const pctVal = (result.percentage || 0) / 100;
+    const entered = isResultEntered(result, "ChSB");
+    const scoreVal = entered ? Number(result.total) : null;
+    const pctVal = entered ? (Number(result.percentage) || 0) / 100 : null;
 
     r.values = [idx + 1, result.studentName, scoreVal, pctVal];
     r.height = 20;
@@ -499,8 +567,11 @@ export async function exportChSBToExcel(assessment, results, stats, schoolName =
 
   // Build Excel Buffer & Attach Native OpenXML Chart
   const rawBuffer = await workbook.xlsx.writeBuffer();
-  const finalBuffer = await attachNativeChartsToZip(rawBuffer, sheetName, numStudents, 0, false);
+  const finalBuffer = await attachNativeChartsToZip(rawBuffer, sheetName, numStudents, 0, false, {
+    studentNames: results.map((r) => r.studentName || ""),
+    studentPcts: results.map((r) => (isResultEntered(r, "ChSB") ? (Number(r.percentage) || 0) / 100 : null)),
+  });
 
-  const filename = `${assessment.className}_${assessment.subject}_ChSB-${assessment.number}.xlsx`;
-  downloadBuffer(finalBuffer, filename);
+  const filename = safeFilename(`${assessment.className}_${assessment.subject}_ChSB-${assessment.number}.xlsx`);
+  return { buffer: finalBuffer, filename };
 }

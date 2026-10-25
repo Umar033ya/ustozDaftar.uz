@@ -6,6 +6,8 @@
 //
 // Languages: uz-latin (O'zbek lotin), uz-cyrillic (Ўзбек кирилл), ru (Русский)
 
+import { subscriptionTranslations } from "./i18nSubscription.js";
+
 export const DEFAULT_LANG = "uz-latin";
 export const STORAGE_KEY = "ustozdaftar_lang";
 export const SUPPORTED_LANGS = ["uz-latin", "uz-cyrillic", "ru"];
@@ -35,6 +37,8 @@ export const translations = {
     "nav.chsb": "ChSB",
     "nav.statistics": "Statistika",
     "nav.settings": "Sozlamalar",
+    "nav.adminFinance": "Moliya (admin)",
+    "nav.adminPayments": "To'lov so'rovlari (admin)",
     "nav.logout": "Chiqish",
     "nav.back": "Qaytish",
 
@@ -356,6 +360,26 @@ export const translations = {
     "paymentModal.instructionText":
       "To'lovni amalga oshirgach, admin tasdiqlashi uchun tranzaksiya belgisini yoki to'lov chekini yuboring. Obuna to'lov tasdiqlangach faollashadi.",
     "paymentModal.submitReference": "Tranzaksiya ma'lumotlarini kiritish",
+    "inpay.payOnline": "Onlayn to'lash (Click, Payme, karta)",
+    "inpay.onlineHint": "Xavfsiz inPAY to'lov sahifasiga o'tasiz. To'lov tasdiqlangach tarif avtomatik faollashadi.",
+    "inpay.redirecting": "To'lov sahifasiga o'tilmoqda...",
+    "inpay.orManual": "yoki karta raqamiga o'tkazma",
+    "inpay.error.generic": "To'lovni boshlab bo'lmadi. Qayta urinib ko'ring.",
+    "inpay.status.title": "To'lov holati",
+    "inpay.status.checking": "To'lov holati tekshirilmoqda...",
+    "inpay.status.pending": "To'lov kutilmoqda. To'lovni yakunlagan bo'lsangiz, bir necha soniya kuting — holat avtomatik yangilanadi.",
+    "inpay.status.stillPending": "To'lov hali tasdiqlanmadi. Pul yechilgan bo'lsa, bir necha daqiqadan so'ng \"Qayta tekshirish\" tugmasini bosing.",
+    "inpay.status.success": "To'lov muvaffaqiyatli o'tdi! {plan} tarifi {date} gacha faollashtirildi.",
+    "inpay.status.failed": "To'lov amalga oshmadi. Hisobingizdan pul yechilmagan bo'lsa, qayta urinib ko'ring.",
+    "inpay.status.cancelled": "To'lov bekor qilindi. Tarifingiz o'zgarmadi.",
+    "inpay.status.expired": "To'lov muddati tugadi. Yangi to'lov yarating.",
+    "inpay.status.review": "To'lov qabul qilindi, lekin summasi tarif narxiga mos kelmadi. Administrator tekshiradi — qo'llab-quvvatlash xizmatiga murojaat qiling.",
+    "inpay.status.notFound": "To'lov topilmadi.",
+    "inpay.status.checkError": "Holatni tekshirib bo'lmadi. Internetni tekshirib, qayta urinib ko'ring.",
+    "inpay.action.payAgain": "To'lovni davom ettirish",
+    "inpay.action.retry": "Qayta tekshirish",
+    "inpay.action.toDashboard": "Bosh sahifaga",
+    "inpay.action.choosePlan": "Tarif tanlash",
     "paymentModal.close": "Yopish",
 
     // Payment request form
@@ -412,7 +436,8 @@ export const translations = {
     "adminPayments.status": {
       "pending": "Kutilmoqda",
       "approved": "Tasdiqlangan",
-      "rejected": "Rad etilgan"
+      "rejected": "Rad etilgan",
+      "refunded": "Qaytarilgan"
     },
     "adminPayments.plan": "Tarif",
     "adminPayments.billingPeriod": "To'lov davri",
@@ -470,6 +495,8 @@ export const translations = {
     "nav.chsb": "ЧСБ",
     "nav.statistics": "Статистика",
     "nav.settings": "Созламалар",
+    "nav.adminFinance": "Молия (админ)",
+    "nav.adminPayments": "Тўлов сўровлари (админ)",
     "nav.logout": "Чиқиш",
     "nav.back": "Қайтиш",
 
@@ -791,6 +818,26 @@ export const translations = {
     "paymentModal.instructionText":
       "Тўловни амалга оширгач, админ тасдиқлаши учун транзакция белгисини ёки тўлов чекини юборинг. Обуна тўлов тасдиқлангач фаоллашади.",
     "paymentModal.submitReference": "Транзакция маълумотларини киритиш",
+    "inpay.payOnline": "Онлайн тўлаш (Click, Payme, карта)",
+    "inpay.onlineHint": "Хавфсиз inPAY тўлов саҳифасига ўтасиз. Тўлов тасдиқлангач тариф автоматик фаоллашади.",
+    "inpay.redirecting": "Тўлов саҳифасига ўтилмоқда...",
+    "inpay.orManual": "ёки карта рақамига ўтказма",
+    "inpay.error.generic": "Тўловни бошлаб бўлмади. Қайта уриниб кўринг.",
+    "inpay.status.title": "Тўлов ҳолати",
+    "inpay.status.checking": "Тўлов ҳолати текширилмоқда...",
+    "inpay.status.pending": "Тўлов кутилмоқда. Тўловни якунлаган бўлсангиз, бир неча сония кутинг — ҳолат автоматик янгиланади.",
+    "inpay.status.stillPending": "Тўлов ҳали тасдиқланмади. Пул ечилган бўлса, бир неча дақиқадан сўнг \"Қайта текшириш\" тугмасини босинг.",
+    "inpay.status.success": "Тўлов муваффақиятли ўтди! {plan} тарифи {date} гача фаоллаштирилди.",
+    "inpay.status.failed": "Тўлов амалга ошмади. Ҳисобингиздан пул ечилмаган бўлса, қайта уриниб кўринг.",
+    "inpay.status.cancelled": "Тўлов бекор қилинди. Тарифингиз ўзгармади.",
+    "inpay.status.expired": "Тўлов муддати тугади. Янги тўлов яратинг.",
+    "inpay.status.review": "Тўлов қабул қилинди, лекин суммаси тариф нархига мос келмади. Администратор текширади — қўллаб-қувватлаш хизматига мурожаат қилинг.",
+    "inpay.status.notFound": "Тўлов топилмади.",
+    "inpay.status.checkError": "Ҳолатни текшириб бўлмади. Интернетни текшириб, қайта уриниб кўринг.",
+    "inpay.action.payAgain": "Тўловни давом эттириш",
+    "inpay.action.retry": "Қайта текшириш",
+    "inpay.action.toDashboard": "Бош саҳифага",
+    "inpay.action.choosePlan": "Тариф танлаш",
     "paymentModal.close": "Ёпиш",
 
     // Payment request form
@@ -847,7 +894,8 @@ export const translations = {
     "adminPayments.status": {
       "pending": "Кутилмоқда",
       "approved": "Тасдиқланган",
-      "rejected": "Рад этилган"
+      "rejected": "Рад этилган",
+      "refunded": "Қайтарилган"
     },
     "adminPayments.plan": "Тариф",
     "adminPayments.billingPeriod": "Тўлов даври",
@@ -905,6 +953,8 @@ export const translations = {
     "nav.chsb": "ЧСБ",
     "nav.statistics": "Статистика",
     "nav.settings": "Настройки",
+    "nav.adminFinance": "Финансы (админ)",
+    "nav.adminPayments": "Заявки на оплату (админ)",
     "nav.logout": "Выход",
     "nav.back": "Назад",
 
@@ -1226,6 +1276,26 @@ export const translations = {
     "paymentModal.instructionText":
       "После оплаты отправьте номер транзакции или чек об оплате для проверки администратором. Подписка активируется после подтверждения платежа.",
     "paymentModal.submitReference": "Ввести данные транзакции",
+    "inpay.payOnline": "Оплатить онлайн (Click, Payme, карта)",
+    "inpay.onlineHint": "Вы перейдёте на защищённую страницу оплаты inPAY. После подтверждения оплаты тариф включится автоматически.",
+    "inpay.redirecting": "Переход на страницу оплаты...",
+    "inpay.orManual": "или перевод на карту",
+    "inpay.error.generic": "Не удалось начать оплату. Попробуйте ещё раз.",
+    "inpay.status.title": "Статус оплаты",
+    "inpay.status.checking": "Проверяем статус оплаты...",
+    "inpay.status.pending": "Ожидаем оплату. Если вы уже оплатили, подождите несколько секунд — статус обновится автоматически.",
+    "inpay.status.stillPending": "Оплата ещё не подтверждена. Если деньги списаны, нажмите «Проверить снова» через несколько минут.",
+    "inpay.status.success": "Оплата прошла успешно! Тариф {plan} активен до {date}.",
+    "inpay.status.failed": "Оплата не прошла. Если деньги не списались, попробуйте ещё раз.",
+    "inpay.status.cancelled": "Оплата отменена. Ваш тариф не изменился.",
+    "inpay.status.expired": "Срок оплаты истёк. Создайте новый платёж.",
+    "inpay.status.review": "Платёж получен, но сумма не совпала с ценой тарифа. Администратор проверит его — обратитесь в поддержку.",
+    "inpay.status.notFound": "Платёж не найден.",
+    "inpay.status.checkError": "Не удалось проверить статус. Проверьте интернет и попробуйте снова.",
+    "inpay.action.payAgain": "Продолжить оплату",
+    "inpay.action.retry": "Проверить снова",
+    "inpay.action.toDashboard": "На главную",
+    "inpay.action.choosePlan": "Выбрать тариф",
     "paymentModal.close": "Закрыть",
 
     // Payment request form
@@ -1282,7 +1352,8 @@ export const translations = {
     "adminPayments.status": {
       "pending": "Ожидает",
       "approved": "Подтвержден",
-      "rejected": "Отклонен"
+      "rejected": "Отклонен",
+      "refunded": "Возвращён"
     },
     "adminPayments.plan": "Тариф",
     "adminPayments.billingPeriod": "Период оплаты",
@@ -1322,6 +1393,8 @@ export const translations = {
     "general.required": "Обязательно",
   },
 };
+
+for (const [lang, extra] of Object.entries(subscriptionTranslations)) Object.assign(translations[lang], extra);
 
 /** Pure lookup with a safe fallback chain: lang -> default lang -> key. */
 export function translate(lang, key) {

@@ -4,9 +4,12 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
+import LoadingState from "@/components/LoadingState";
 import StudentPercentageChart from "@/components/StudentPercentageChart";
 import TaskAverageChart from "@/components/TaskAverageChart";
 import { exportBSBToExcel } from "@/lib/excelExport";
+import { isResultEntered, summarizeAssessment } from "@/lib/resultStats";
+import SaveStatus from "@/components/SaveStatus";
 import { useAuth } from "@/lib/authContext";
 import {
   getAssessmentById,
@@ -28,8 +31,12 @@ export default function BSBResult() {
   const [saving, setSaving] = useState(false);
   const [schoolName, setSchoolName] = useState("");
   const [loading, setLoading] = useState(true);
+  const [saveError, setSaveError] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
   const saveTimers = useRef({});
   const pendingSaves = useRef({});
+  const failedSaves = useRef(new Set());
 
   useEffect(() => {
     if (!currentUser || !assessmentId) return;
@@ -78,9 +85,14 @@ export default function BSBResult() {
       delete pendingSaves.current[studentId];
       try {
         await updateResult(currentUser.uid, assessmentId, studentId, pending);
+        failedSaves.current.delete(studentId);
       } catch (e) {
-        console.error("Error updating result:", e);
+        console.error("Error updating result:", e?.code || e);
+        // Keep the unsaved scores (unless newer ones are already queued) so a retry can send them.
+        if (!pendingSaves.current[studentId]) pendingSaves.current[studentId] = pending;
+        failedSaves.current.add(studentId);
       } finally {
+        setSaveError(failedSaves.current.size > 0);
         setSaving(false);
       }
     },
@@ -157,55 +169,36 @@ export default function BSBResult() {
     });
   };
 
-  const handleExport = () => {
-    exportBSBToExcel(assessment, results, stats, schoolName);
+  const retryFailedSaves = () => {
+    setSaving(true);
+    [...failedSaves.current].forEach((studentId) => flushSave(studentId));
+  };
+
+  const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    setExportError("");
+    try {
+      await exportBSBToExcel(assessment, results, stats, schoolName);
+    } catch (e) {
+      console.error("Excel export failed:", e);
+      setExportError("Excel faylini yaratib bo'lmadi. Sahifani yangilab, qayta urinib ko'ring.");
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handlePrint = () => {
     window.print();
   };
 
-  const calculateStatistics = () => {
-    if (!results || results.length === 0) return null;
-    
-    const validResults = results.filter((r) => r.total > 0 || (r.scores || []).some((s) => s !== "" && s > 0));
-    const totals = (validResults.length > 0 ? validResults : results).map((r) => r.total || 0);
-    const percentages = (validResults.length > 0 ? validResults : results).map((r) => r.percentage || 0);
-
-    const activeList = validResults.length > 0 ? validResults : results;
-
-    // Calculate task averages
-    const taskAverages = assessment.tasks.map((task, taskIndex) => {
-      const taskScores = activeList
-        .map((r) => (r.scores || [])[taskIndex])
-        .filter((s) => s !== "" && s !== undefined && !isNaN(s));
-
-      if (taskScores.length === 0) return "0.0";
-      const avgScore = taskScores.reduce((a, b) => a + b, 0) / taskScores.length;
-      return ((avgScore / task.maxScore) * 100).toFixed(1);
-    });
-
-    const avgScore = (totals.reduce((a, b) => a + b, 0) / totals.length).toFixed(1);
-    const avgPct = (percentages.reduce((a, b) => a + b, 0) / percentages.length).toFixed(1);
-
-    return {
-      maxTotal: assessment.maxTotal,
-      studentCount: results.length,
-      completedCount: validResults.length,
-      averageScore: avgScore,
-      averagePercentage: avgPct,
-      highestScore: totals.length > 0 ? Math.max(...totals) : 0,
-      lowestScore: totals.length > 0 ? Math.min(...totals) : 0,
-      taskAverages,
-    };
-  };
-
-  const stats = calculateStatistics();
+  // Only entered results count; a real 0 is a result, an empty cell is not.
+  const stats = summarizeAssessment(assessment, results);
 
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="text-center text-gray-500 py-12">Yuklanmoqda...</div>
+        <LoadingState />
       </DashboardLayout>
     );
   }
@@ -233,12 +226,14 @@ export default function BSBResult() {
           <div className="flex gap-2 sm:gap-3">
             <button
               onClick={handleExport}
-              className="bg-emerald-600 text-white px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg hover:bg-emerald-700 font-medium text-xs sm:text-sm flex items-center gap-1.5 transition-colors shadow-xs"
+              disabled={exporting}
+              aria-busy={exporting}
+              className="bg-emerald-600 text-white px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg hover:bg-emerald-700 font-medium text-xs sm:text-sm flex items-center gap-1.5 transition-colors shadow-xs disabled:opacity-70 disabled:cursor-wait"
             >
               <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              Excelga yuklash
+              {exporting ? "Tayyorlanmoqda..." : "Excelga yuklash"}
             </button>
             <button
               onClick={handlePrint}
@@ -251,6 +246,11 @@ export default function BSBResult() {
             </button>
           </div>
         </div>
+        {exportError && (
+          <p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-700">
+            {exportError}
+          </p>
+        )}
       </div>
 
       {/* Official Result Document Wrapper */}
@@ -272,30 +272,35 @@ export default function BSBResult() {
             </div>
             <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
               <p className="text-xs text-gray-500 font-medium">O&apos;quvchilar</p>
-              <p className="text-lg font-bold text-gray-900 mt-0.5">{stats.studentCount}</p>
+              <p className="text-lg font-bold text-gray-900 mt-0.5">
+                {stats.studentCount}
+                {stats.completedCount < stats.studentCount && (
+                  <span className="ml-1 text-xs font-medium text-amber-700">({stats.completedCount} kiritilgan)</span>
+                )}
+              </p>
             </div>
             <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
               <p className="text-xs text-gray-500 font-medium">O&apos;rtacha ball</p>
-              <p className="text-lg font-bold text-gray-900 mt-0.5">{stats.averageScore}</p>
+              <p className="text-lg font-bold text-gray-900 mt-0.5">{stats.averageScore ?? "—"}</p>
             </div>
             <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
               <p className="text-xs text-gray-500 font-medium">O&apos;rtacha %</p>
-              <p className="text-lg font-bold text-gray-900 mt-0.5">{stats.averagePercentage}%</p>
+              <p className="text-lg font-bold text-gray-900 mt-0.5">{stats.averagePercentage === null ? "—" : `${stats.averagePercentage}%`}</p>
             </div>
             <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-200">
               <p className="text-xs text-emerald-700 font-medium">Eng yuqori</p>
-              <p className="text-lg font-bold text-emerald-700 mt-0.5">{stats.highestScore}</p>
+              <p className="text-lg font-bold text-emerald-700 mt-0.5">{stats.highestScore ?? "—"}</p>
             </div>
             <div className="bg-red-50 rounded-lg p-3 border border-red-200">
               <p className="text-xs text-red-700 font-medium">Eng past</p>
-              <p className="text-lg font-bold text-red-700 mt-0.5">{stats.lowestScore}</p>
+              <p className="text-lg font-bold text-red-700 mt-0.5">{stats.lowestScore ?? "—"}</p>
             </div>
           </div>
         )}
 
         {/* Charts Section (Hidden in Print) */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 print:hidden mb-6">
-          <StudentPercentageChart results={results} title="O'quvchilar BSB ko'rsatkichi (%)" />
+        <div className="grid grid-cols-1 xl:grid-cols-2 items-start gap-4 print:hidden mb-6">
+          <StudentPercentageChart results={results} type="BSB" title="O'quvchilar BSB ko'rsatkichi (%)" />
           {stats && <TaskAverageChart tasks={assessment.tasks} taskAverages={stats.taskAverages} />}
         </div>
 
@@ -307,7 +312,7 @@ export default function BSBResult() {
                 <th className="px-3 py-2 border border-gray-300 text-center w-12">
                   T/r
                 </th>
-                <th className="px-3 py-2 border border-gray-300 text-left min-w-[160px] sm:min-w-[200px]">
+                <th className="px-3 py-2 border border-gray-300 text-left min-w-[160px] sm:min-w-[200px] sticky left-0 z-10 bg-gray-100 print:static">
                   F.I.Sh
                 </th>
                 {assessment.tasks.map((task) => (
@@ -352,7 +357,7 @@ export default function BSBResult() {
                   <td className="px-3 py-2 border border-gray-300 text-center font-medium text-gray-700">
                     {studentIndex + 1}
                   </td>
-                  <td className="px-3 py-2 border border-gray-300 font-semibold text-gray-900 whitespace-nowrap">
+                  <td className="px-3 py-2 border border-gray-300 font-semibold text-gray-900 whitespace-nowrap sticky left-0 z-[1] bg-white print:static">
                     {result.studentName}
                   </td>
                   {assessment.tasks.map((task, taskIndex) => (
@@ -373,16 +378,16 @@ export default function BSBResult() {
                             }
                           }
                         }}
-                        className="w-12 sm:w-14 h-8 px-1 text-center font-semibold border border-gray-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white"
-                        placeholder="0"
+                        className="w-12 sm:w-14 h-8 px-1 text-center font-semibold border border-gray-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white placeholder:text-gray-300"
+                        placeholder="–"
                       />
                     </td>
                   ))}
                   <td className="px-3 py-2 border border-gray-300 text-center font-bold text-gray-900 bg-gray-50">
-                    {result.total || 0}
+                    {isResultEntered(result, "BSB") ? Number(result.total) || 0 : "—"}
                   </td>
                   <td className="px-3 py-2 border border-gray-300 text-center font-bold text-gray-900 bg-gray-50">
-                    {(result.percentage || 0).toFixed(1)}%
+                    {isResultEntered(result, "BSB") ? `${(Number(result.percentage) || 0).toFixed(1)}%` : "—"}
                   </td>
                 </tr>
               ))}
@@ -397,14 +402,14 @@ export default function BSBResult() {
                   </td>
                   {stats.taskAverages.map((avg, idx) => (
                     <td key={idx} className="px-2 py-2.5 border border-gray-300 text-center font-extrabold text-blue-700">
-                      {avg}%
+                      {avg === null ? "—" : `${avg}%`}
                     </td>
                   ))}
                   <td className="px-3 py-2.5 border border-gray-300 text-center font-extrabold text-gray-900 bg-gray-200">
-                    {stats.averageScore}
+                    {stats.averageScore ?? "—"}
                   </td>
                   <td className="px-3 py-2.5 border border-gray-300 text-center font-extrabold text-blue-800 bg-gray-200">
-                    {stats.averagePercentage}%
+                    {stats.averagePercentage === null ? "—" : `${stats.averagePercentage}%`}
                   </td>
                 </tr>
               </tfoot>
@@ -413,11 +418,7 @@ export default function BSBResult() {
         </div>
       </div>
 
-      {saving && (
-        <div className="fixed bottom-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg text-xs font-semibold z-50 print:hidden">
-          Saqlanmoqda...
-        </div>
-      )}
+      <SaveStatus saving={saving} saveError={saveError} onRetry={retryFailedSaves} />
     </DashboardLayout>
   );
 }

@@ -222,6 +222,41 @@ export async function addStudent(uid, classId, name) {
   return { id: studentId, name, createdAt };
 }
 
+/**
+ * Add several students at once: one read and one atomic write for the whole
+ * batch, including their empty result rows in every assessment of the class.
+ * Names are stored exactly as given (no transliteration).
+ */
+export async function addStudents(uid, classId, names) {
+  const data = await readUserDoc(uid);
+  const classData = asMap(asMap(data?.classes)[classId]);
+  const students = { ...asMap(classData.students) };
+  const assessments = Object.entries(asMap(data?.assessments)).filter(
+    ([, raw]) => asMap(raw).classId === classId
+  );
+  const baseTime = Date.now();
+  const patch = {};
+  const created = [];
+
+  names.forEach((name, index) => {
+    const studentId = generateId(students);
+    // distinct createdAt keeps the review order when the roster is sorted
+    const student = { id: studentId, name, createdAt: baseTime + index };
+    students[studentId] = student;
+    created.push(student);
+    patch[`classes.${classId}.students.${studentId}`] = { name, createdAt: student.createdAt };
+
+    for (const [assessmentId, raw] of assessments) {
+      patch[`assessments.${assessmentId}.results.${studentId}`] = buildEmptyResult(asMap(raw), student);
+    }
+  });
+
+  if (created.length === 0) return [];
+  patch[`classes.${classId}.studentCount`] = Object.keys(students).length;
+  await patchUserDoc(uid, patch);
+  return created;
+}
+
 export async function updateStudentName(uid, classId, studentId, name) {
   await patchUserDoc(uid, { [`classes.${classId}.students.${studentId}.name`]: name });
 }
@@ -300,6 +335,24 @@ function toAssessment(id, raw) {
     studentCount: Object.keys(asMap(assessment.results)).length,
     createdAt: toMillis(assessment.createdAt),
   };
+}
+
+/**
+ * Everything the statistics page needs from ONE document read: classes, their
+ * rosters, and assessments with their result rows.
+ */
+export async function getWorkspace(uid) {
+  const data = asMap(await readUserDoc(uid));
+  const classMap = asMap(data.classes);
+  const studentsByClass = {};
+  for (const [classId, raw] of Object.entries(classMap)) studentsByClass[classId] = toStudentList(raw);
+  const assessments = Object.entries(asMap(data.assessments))
+    .map(([id, raw]) => ({
+      ...toAssessment(id, raw),
+      results: Object.entries(asMap(asMap(raw).results)).map(([rid, r]) => ({ id: rid, ...asMap(r) })),
+    }))
+    .sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id));
+  return { classes: toClassList(data), studentsByClass, assessments };
 }
 
 export async function getAssessments(uid) {

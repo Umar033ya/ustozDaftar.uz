@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { AuthError, ConfigError, requireAuth } from "@/lib/firebaseAdmin";
-import { MAX_STUDENTS, normalizeStudentNames } from "@/lib/studentNames";
+import { analyzeStudentNames, missingRowNumbers } from "@/lib/studentNames";
+import { DEFAULT_MODEL, ExtractionError, extractStudents } from "@/lib/server/studentExtraction";
 
 // This route is server-only. The OpenRouter key is read from process.env at
 // request time and is never sent to the browser: no NEXT_PUBLIC_ prefix is
@@ -13,14 +14,6 @@ import { MAX_STUDENTS, normalizeStudentNames } from "@/lib/studentNames";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
-// dots-studio/dots-3-note-preview:free is a free OpenRouter model that supports
-// image input (modality: text+image→text) — verified via /api/v1/models on
-// 2026-10-06. 16B active / 280B total MoE, 512K context window.
-// Chosen over google/gemma-4-31b-it:free because that model's shared Google AI
-// Studio pool was returning provider-side 429s; Dots Studio uses a separate
-// upstream backend.
-const OPENROUTER_MODEL = "dots-studio/dots-3-note-preview:free";
 const MAX_IMAGES = 3;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // per image
 
@@ -64,79 +57,8 @@ const ACCEPTED_MIME_TYPES = new Set([
   "image/heif",
 ]);
 
-const PROMPT = [
-  "You read photos of a class student roster (Kundalik-style school journal screenshots).",
-  "Extract every student full name that is visible in the images.",
-  "",
-  "Hard rules:",
-  "- Copy each name EXACTLY as it is written in the image: same letters, same spelling, same apostrophes, same diacritics, same word order, same capitalization.",
-  "- Do NOT translate, transliterate, correct, normalize, shorten, expand or re-order any name.",
-  "- Do NOT reorder names into a different sequence than the visual order of the list.",
-  "- Keep the whole name as printed, including any patronymic or father's name (for example \"Umarjon o'g'li\" or \"Nurmuhamedovich\"): it is removed afterwards by the server.",
-  `- Read every student on the list, up to ${MAX_STUDENTS} in total.`,
-  "- Ignore anything that is not a student name (headers, dates, subjects, teachers, phone numbers, column labels, page numbers).",
-  "- If the same name appears in more than one image, output it only once.",
-  "- Include a name only if you can actually read it. Never invent, guess or complete names, and never pad the list with blanks.",
-  "- If no student name can be read, return an empty list.",
-  "",
-  'Return ONLY valid JSON in this exact format, with no extra text, no markdown, no explanation:',
-  '{ "students": ["Surname FirstName", "Surname FirstName2", ...] }',
-].join("\n");
-
 function errorResponse(message, status, code) {
   return NextResponse.json({ error: message, code }, { status });
-}
-
-/**
- * Parse the text returned by the model.
- * Handles raw JSON as well as ```json ... ``` fences the model may add.
- *
- * @param {string} text
- * @returns {{ students: string[] } | null}
- */
-function parseModelText(text) {
-  if (typeof text !== "string") return null;
-
-  // Strip optional ```json ... ``` or ``` ... ``` fences.
-  let cleaned = text
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-
-  // Try the whole cleaned string first.
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    // Fall back: find the first {...} block in the response.
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (match) {
-      try {
-        return JSON.parse(match[0]);
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  }
-}
-
-/**
- * Build an OpenAI-compatible multimodal user message:
- * system prompt text + one image_url content part per screenshot.
- *
- * @param {{ mimeType: string; base64: string }[]} images
- * @returns {object[]} messages array
- */
-function buildMessages(images) {
-  const content = [
-    { type: "text", text: PROMPT },
-    ...images.map(({ mimeType, base64 }) => ({
-      type: "image_url",
-      image_url: { url: `data:${mimeType};base64,${base64}` },
-    })),
-  ];
-
-  return [{ role: "user", content }];
 }
 
 export async function POST(request) {
@@ -236,113 +158,36 @@ export async function POST(request) {
     return errorResponse("Rasmni o'qib bo'lmadi.", 400, "unreadable_image");
   }
 
-  // 6. Call OpenRouter.
-  const requestBody = {
-    model: OPENROUTER_MODEL,
-    temperature: 0,
-    messages: buildMessages(images),
-    // NOTE: response_format is intentionally omitted — the free Nemotron
-    // endpoint does not support it. We parse the plain-text response instead.
-  };
-
-  let response;
+  // 6. One model call carrying every image once (bounded retries inside).
+  //    Student names are personal data: nothing the model returns is logged.
+  let parsed;
   try {
-    response = await fetch(OPENROUTER_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        "HTTP-Referer": "https://ustozdaftar.uz",
-        "X-Title": "UstozDaftar",
-      },
-      body: JSON.stringify(requestBody),
-    });
+    parsed = await extractStudents({ apiKey, images, model: process.env.OPENROUTER_MODEL || DEFAULT_MODEL });
   } catch (error) {
-    console.error("[OpenRouter upstream] network error", { model: OPENROUTER_MODEL, error: error?.message || String(error) });
-    return NextResponse.json(
-      {
-        error: "OpenRouter serveriga ulanib bo'lmadi.",
-        code: "openrouter_error",
-        upstreamStatus: 503,
-        upstreamMessage: "OpenRouter serveriga ulanib bo'lmadi.",
-        model: OPENROUTER_MODEL,
-      },
-      { status: 503 }
-    );
-  }
-
-  // 7. Propagate real upstream HTTP errors (400, 401, 429, 502, 503, …).
-  if (!response.ok) {
-    const rawBody = await response.text().catch(() => "");
-
-    let upstreamMessage = `OpenRouter so'rovi muvaffaqiyatsiz bo'ldi (${response.status}).`;
-    try {
-      const parsed = JSON.parse(rawBody || "{}");
-      const msg = parsed?.error?.message || parsed?.message;
-      if (typeof msg === "string" && msg.trim()) upstreamMessage = msg;
-    } catch {
-      // Non-JSON body — keep the generic message.
+    if (error instanceof ExtractionError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code, upstreamStatus: error.upstreamStatus },
+        { status: error.status }
+      );
     }
-
-    console.error("[OpenRouter upstream] request failed", {
-      model: OPENROUTER_MODEL,
-      upstreamStatus: response.status,
-      upstreamBody: rawBody.slice(0, 1200),
-    });
-
-    return NextResponse.json(
-      {
-        error: upstreamMessage,
-        code: "openrouter_error",
-        upstreamStatus: response.status,
-        upstreamMessage: rawBody.slice(0, 1200) || upstreamMessage,
-        model: OPENROUTER_MODEL,
-      },
-      { status: response.status }
-    );
+    console.error("[ai] extraction failed", error?.message);
+    return errorResponse("AI bilan ishlashda xatolik yuz berdi. Qayta urinib ko'ring.", 500, "server_error");
   }
 
-  // 8. Parse the response.
-  const json = await response.json().catch(() => null);
-  const rawText = json?.choices?.[0]?.message?.content ?? null;
+  // 7. Normalize without changing the script. Every row becomes a review
+  //    entry; only the same printed row seen twice (overlapping screenshots)
+  //    is merged, and that is counted.
+  const { entries, truncated, merged } = analyzeStudentNames(parsed.students);
+  const students = entries.filter((entry) => entry.status !== "empty");
 
-  if (typeof rawText !== "string" || !rawText.trim()) {
-    const detail = JSON.stringify(json || {}).slice(0, 500);
-    console.error("[OpenRouter upstream] empty or missing content", { model: OPENROUTER_MODEL, upstreamBody: detail });
-    return NextResponse.json(
-      {
-        error: "OpenRouter javobida matn yo'q.",
-        code: "openrouter_error",
-        upstreamStatus: 502,
-        upstreamMessage: detail || "OpenRouter javobida matn yo'q.",
-        model: OPENROUTER_MODEL,
-      },
-      { status: 502 }
-    );
-  }
-
-  const parsed = parseModelText(rawText);
-
-  if (!parsed || !Array.isArray(parsed.students)) {
-    console.error("[OpenRouter upstream] invalid payload — could not parse JSON", {
-      model: OPENROUTER_MODEL,
-      rawText: rawText.slice(0, 500),
-    });
-    return NextResponse.json(
-      {
-        error: "OpenRouter javobini tushunib bo'lmadi.",
-        code: "openrouter_error",
-        upstreamStatus: 502,
-        upstreamMessage: rawText.slice(0, 500) || "OpenRouter javobini tushunib bo'lmadi.",
-        model: OPENROUTER_MODEL,
-      },
-      { status: 502 }
-    );
-  }
-
-  // 9. Normalize (remove patronymics, deduplicate, cap at MAX_STUDENTS).
-  //    The model now returns flat strings, not objects, so pass them directly.
-  const fullNames = normalizeStudentNames(parsed.students);
-
-  return NextResponse.json({ students: fullNames.map((fullName) => ({ fullName })) });
+  return NextResponse.json({
+    students,
+    skippedEmpty: entries.length - students.length,
+    truncated,
+    merged,
+    // completeness signals for the review screen
+    visibleRows: parsed.visibleRows,
+    missingRows: missingRowNumbers(entries),
+    incomplete: parsed.salvaged || parsed.truncatedOutput,
+  });
 }

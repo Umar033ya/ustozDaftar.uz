@@ -2,26 +2,20 @@
 
 import { useState, useRef, useEffect, useMemo } from "react";
 import { auth } from "@/lib/firebase";
-import { nameKey } from "@/lib/studentNames";
-import {
-  addStudent,
-  syncNewStudentToAssessments,
-  setClassStudentCount,
-} from "@/lib/firestoreService";
+import { cleanStudentName } from "@/lib/studentNames";
+import { addStudents, getStudents } from "@/lib/firestoreService";
+import { shrinkImage } from "@/lib/imageResize";
+import AiStudentReviewList, { buildReviewEntries, rosterMatch } from "./AiStudentReviewList";
 
 const MAX_IMAGES = 3;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const ACCEPTED_MIME_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"];
 const ACCEPT_ATTRIBUTE = "image/jpeg,image/png,image/webp,image/heic,image/heif";
 
-// Both sides are normalized, so a roster entry typed as "Yakubov Abdulla
-// Umarjon o'g'li" is recognized as the same person as the extracted
-// "Yakubov Abdulla".
-const sameName = (a = "", b = "") => {
-  const left = nameKey(a);
-  const right = nameKey(b);
-  return left !== "" && left === right;
-};
+// Identifies a selection of images, so re-running the same photos reuses the
+// previous answer instead of sending the class list to the model again.
+const filesSignature = (files) =>
+  files.map((file) => `${file.name}:${file.size}:${file.lastModified}`).join("|");
 
 function Banner({ tone = "error", children }) {
   const tones = {
@@ -46,6 +40,9 @@ export default function AiStudentImport({
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState(null);
   const [inputKey, setInputKey] = useState(0);
+  const [notices, setNotices] = useState([]);
+  // In-memory only (never persisted): extraction results of this session.
+  const resultCache = useRef(new Map());
 
   const busy = status === "loading" || status === "adding";
 
@@ -61,9 +58,50 @@ export default function AiStudentImport({
     setStage("upload");
     setFiles([]);
     setExtracted([]);
+    setNotices([]);
     setStatus("idle");
     setError(null);
     resetFileInput();
+  };
+
+  const showReview = (payload) => {
+    const students = Array.isArray(payload?.students) ? payload.students : [];
+    // Completeness checks: the teacher is told about every possible gap
+    // instead of the import silently being shorter than the list.
+    const summary = [];
+    if (payload?.incomplete) {
+      summary.push("AI javobi to'liq kelmadi — ro'yxat oxiri o'qilmagan bo'lishi mumkin. Rasm bilan solishtirib tekshiring.");
+    }
+    if (Number.isInteger(payload?.visibleRows) && payload.visibleRows > students.length) {
+      summary.push(
+        `AI rasmda ${payload.visibleRows} ta qator ko'rdi, lekin ${students.length} ta ismni o'qidi. Yetishmayotganlarini qo'lda qo'shing.`
+      );
+    }
+    if (Array.isArray(payload?.missingRows) && payload.missingRows.length > 0) {
+      summary.push(`Ro'yxatdagi ${payload.missingRows.join(", ")}-qator(lar) o'qilmadi. Ularni qo'lda qo'shing yoki aniqroq rasm yuklang.`);
+    }
+    if (payload?.truncated > 0) {
+      summary.push(`Ro'yxat juda uzun: oxirgi ${payload.truncated} ta ism olinmadi. Qolganini alohida rasm bilan yuklang.`);
+    }
+    if (payload?.skippedEmpty > 0) {
+      summary.push(`${payload.skippedEmpty} ta bo'sh qator e'tiborga olinmadi.`);
+    }
+    if (payload?.merged > 0) {
+      summary.push(`Bir-birini qoplagan rasmlarda takrorlangan ${payload.merged} ta qator bir marta olindi.`);
+    }
+    setNotices(summary);
+    setStage("review");
+    setStatus("idle");
+
+    if (students.length === 0) {
+      setExtracted([]);
+      setError({
+        kind: "empty",
+        message: "Rasmda o'quvchi ismi topilmadi. Aniqroq, yorug'roq surat bilan qayta urinib ko'ring.",
+      });
+      return;
+    }
+    setExtracted(buildReviewEntries(students, existingStudents || []));
   };
 
   const handleFileChange = (event) => {
@@ -113,8 +151,15 @@ export default function AiStudentImport({
 
   const handleExtract = async () => {
     if (files.length === 0 || status === "loading") return;
-    setStatus("loading");
     setError(null);
+
+    const signature = filesSignature(files);
+    const cached = resultCache.current.get(signature);
+    if (cached) {
+      showReview(cached);
+      return;
+    }
+    setStatus("loading");
 
     try {
       // The ID token is fetched fresh on every attempt. It is short-lived, so
@@ -135,8 +180,10 @@ export default function AiStudentImport({
         return;
       }
 
+      // Each image is uploaded once, downscaled; the answer is cached per selection.
+      const uploads = await Promise.all(files.map(shrinkImage));
       const formData = new FormData();
-      files.forEach((file) => formData.append("images", file));
+      uploads.forEach((file) => formData.append("images", file));
 
       const response = await fetch("/api/extract-students", {
         method: "POST",
@@ -161,30 +208,8 @@ export default function AiStudentImport({
         return;
       }
 
-      const students = Array.isArray(payload?.students) ? payload.students : [];
-      const roster = existingStudents || [];
-
-      if (students.length === 0) {
-        setStatus("idle");
-        setExtracted([]);
-        setStage("review");
-        setError({
-          kind: "empty",
-          message:
-            "Rasmda o'quvchi ismi topilmadi. Aniqroq, yorug'roq surat bilan qayta urinib ko'ring.",
-        });
-        return;
-      }
-
-      setExtracted(
-        students.map((entry) => {
-          const fullName = (entry?.fullName || "").trim();
-          const alreadyInClass = roster.some((student) => sameName(student.name, fullName));
-          return { fullName, selected: !alreadyInClass, alreadyInClass };
-        })
-      );
-      setStage("review");
-      setStatus("idle");
+      resultCache.current.set(signature, payload);
+      showReview(payload);
     } catch {
       setStatus("idle");
       setError({
@@ -194,70 +219,66 @@ export default function AiStudentImport({
     }
   };
 
-  const toggleStudent = (index) => {
+  const toggleStudent = (id) => {
+    setExtracted((prev) => prev.map((entry) => (entry.id === id ? { ...entry, selected: !entry.selected } : entry)));
+  };
+
+  const renameStudent = (id, value) => {
     setExtracted((prev) =>
-      prev.map((entry, i) => (i === index ? { ...entry, selected: !entry.selected } : entry))
+      prev.map((entry) =>
+        entry.id === id ? { ...entry, fullName: value, inClass: rosterMatch(value, existingStudents || []) } : entry
+      )
     );
   };
 
+  // "Select all" leaves only students already in the class (same spelling) alone.
   const setAllSelected = (value) => {
-    setExtracted((prev) =>
-      prev.map((entry) => (entry.alreadyInClass ? entry : { ...entry, selected: value }))
-    );
+    setExtracted((prev) => prev.map((entry) => (entry.inClass === "exact" ? entry : { ...entry, selected: value })));
   };
 
-  const selectableCount = extracted.filter((entry) => !entry.alreadyInClass).length;
+  const selectableCount = extracted.filter((entry) => entry.inClass !== "exact").length;
   const selectedCount = extracted.filter((entry) => entry.selected).length;
+  // detected, not yet in the class, but not ticked: these would NOT be saved
+  const skippedCount = extracted.filter((entry) => !entry.selected && entry.inClass !== "exact").length;
 
   const handleConfirm = async () => {
     if (busy || selectedCount === 0) return;
+
+    const chosen = extracted.filter((entry) => entry.selected);
+    const names = chosen.map((entry) => cleanStudentName(entry.fullName));
+    if (names.some((name) => name === "")) {
+      setError({ kind: "invalid", message: "Belgilangan ismlardan biri bo'sh. Ismni yozing yoki belgini olib tashlang." });
+      return;
+    }
+
     setStatus("adding");
     setError(null);
 
-    // A local copy of the roster keeps duplicate checks correct for the whole
-    // batch and lets the cached class counter end up exact.
-    const roster = [...(existingStudents || [])];
-    const created = [];
-    let skipped = 0;
-
     try {
-      for (const entry of extracted) {
-        if (!entry.selected) continue;
-        if (roster.some((student) => sameName(student.name, entry.fullName))) {
-          skipped += 1;
-          continue;
-        }
+      // One read and one atomic write for the whole batch.
+      const created = await addStudents(uid, classId, names);
 
-        const newStudent = await addStudent(uid, classId, entry.fullName);
-        await syncNewStudentToAssessments(uid, classId, newStudent);
-        roster.push(newStudent);
-        created.push(newStudent);
+      // Read the roster back: every student the teacher confirmed must be stored.
+      const stored = await getStudents(uid, classId);
+      const storedIds = new Set(stored.map((student) => student.id));
+      const lost = created.filter((student) => !storedIds.has(student.id));
+      if (lost.length > 0 || created.length !== names.length) {
+        throw new Error(`saved ${created.length - lost.length} of ${names.length}`);
       }
+      const rosterLength = stored.length;
 
-      if (created.length > 0) {
-        await setClassStudentCount(uid, classId, roster.length);
-      }
-
-      if (created.length === 0) {
-        setStatus("idle");
-        setError({
-          kind: "empty",
-          message: "Yangi o'quvchi qo'shilmadi — tanlangan ismlar allaqachon sinfda mavjud.",
-        });
-        return;
-      }
-
-      onStudentsAdded?.(created, roster.length);
+      onStudentsAdded?.(created, rosterLength);
       closeModal();
 
-      const suffix = skipped > 0 ? ` (${skipped} ta allaqachon mavjudligi uchun o'tkazib yuborildi)` : "";
-      onNotify?.(`${created.length} ta o'quvchi sinfga qo'shildi${suffix}.`);
+      const left = extracted.length - created.length;
+      const suffix = left > 0 ? ` ${left} ta ism qo'shilmadi (tanlanmagan yoki sinfda bor).` : "";
+      onNotify?.(`${created.length} ta o'quvchi sinfga qo'shildi.${suffix}`);
     } catch (err) {
       console.error("Error adding students from AI import:", err);
       setStatus("idle");
       setError({
         kind: "firebase",
-        message: "O'quvchilarni saqlashda xatolik yuz berdi. Qayta urinib ko'ring.",
+        message: "O'quvchilarni saqlashda xatolik yuz berdi yoki hammasi saqlanmadi. Sinf ro'yxatini tekshirib, qayta urinib ko'ring.",
       });
     }
   };
@@ -291,7 +312,7 @@ export default function AiStudentImport({
           onClick={busy ? undefined : closeModal}
         >
           <div
-            className="bg-white rounded-xl shadow-lg border border-gray-200 w-full max-w-lg my-auto"
+            className={`bg-white rounded-xl shadow-lg border border-gray-200 w-full my-auto ${stage === "review" ? "max-w-2xl" : "max-w-lg"}`}
             onClick={(event) => event.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -402,31 +423,46 @@ export default function AiStudentImport({
                     </div>
                   </div>
 
-                  <ul className="border border-gray-200 rounded-lg divide-y divide-gray-200 max-h-72 overflow-y-auto">
-                    {extracted.map((entry, index) => (
-                      <li key={`${entry.fullName}-${index}`} className="px-3 py-2.5 flex items-start gap-3">
-                        <input
-                          id={`ai-student-${index}`}
-                          type="checkbox"
-                          checked={entry.selected}
-                          disabled={entry.alreadyInClass || busy}
-                          onChange={() => toggleStudent(index)}
-                          className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0 disabled:cursor-not-allowed"
-                        />
-                        <label
-                          htmlFor={`ai-student-${index}`}
-                          className={`flex-1 text-sm break-words ${entry.selected ? "text-gray-900" : "text-gray-500"} ${entry.alreadyInClass ? "cursor-not-allowed" : "cursor-pointer"}`}
-                        >
-                          <span className="font-medium">{entry.fullName}</span>
-                          {entry.alreadyInClass && (
-                            <span className="ml-2 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 whitespace-nowrap">
-                              sinfda bor
-                            </span>
-                          )}
-                        </label>
-                      </li>
-                    ))}
-                  </ul>
+                  {notices.length > 0 && (
+                    <div className="mb-3 space-y-2">
+                      {notices.map((notice) => (
+                        <Banner key={notice} tone="warning">{notice}</Banner>
+                      ))}
+                    </div>
+                  )}
+
+                  {previews.length > 0 && (
+                    <details className="mb-3 rounded-lg border border-gray-200 bg-gray-50" open>
+                      <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-gray-700">
+                        Asl rasm — ismlarni harfma-harf solishtiring (ў, қ, ғ, ҳ, o‘, g‘)
+                      </summary>
+                      <div className="max-h-64 overflow-auto px-3 pb-3 space-y-2">
+                        {previews.map((src, index) => (
+                          <a key={src} href={src} target="_blank" rel="noopener noreferrer" className="block">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={src} alt={`Ro'yxat rasmi ${index + 1}`} className="w-full rounded border border-gray-200 bg-white" />
+                          </a>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+
+                  <AiStudentReviewList
+                    entries={extracted}
+                    busy={busy}
+                    onToggle={toggleStudent}
+                    onRename={renameStudent}
+                  />
+                  {skippedCount > 0 && (
+                    <div className="mt-3">
+                      <Banner tone="warning">
+                        {skippedCount} ta aniqlangan ism belgilanmagan — ular sinfga qo&apos;shilmaydi.
+                      </Banner>
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500 mt-2">
+                    Ismlar rasmdagi alifboda (kirill yoki lotin) saqlanadi. Xato bo&apos;lsa, shu yerning o&apos;zida tuzating.
+                  </p>
                 </>
               ) : (
                 <div className="text-center py-6">
