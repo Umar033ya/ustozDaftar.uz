@@ -129,7 +129,8 @@ function withFirebaseCli(password) {
     execFileSync(
       process.platform === "win32" ? "npx.cmd" : "npx",
       ["-y", "firebase-tools@latest", "auth:import", file, "--project", projectId, "--hash-algo=STANDARD_SCRYPT",
-        `--memory-cost=${N}`, `--block-size=${r}`, `--parallelization=${p}`, `--dk-len=${dkLen}`],
+        // firebase-tools names the STANDARD_SCRYPT cpu/memory cost (N) --mem-cost
+        `--mem-cost=${N}`, `--block-size=${r}`, `--parallelization=${p}`, `--dk-len=${dkLen}`],
       { stdio: ["ignore", "inherit", "inherit"], shell: process.platform === "win32" }
     );
   } finally {
