@@ -62,6 +62,33 @@ export default async function OverviewPage() {
         />
       </div>
 
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Yaratilgan sinflar"
+          value={formatNumber(stats.totalClasses)}
+          hint={`${formatNumber(stats.teachersWithClasses)} ta o'qituvchida sinf bor`}
+          tone="blue"
+        />
+        <StatCard
+          label="O'quvchilar"
+          value={formatNumber(stats.totalStudents)}
+          hint="Barcha sinflardagi o'quvchilar"
+          tone="purple"
+        />
+        <StatCard
+          label="BSB"
+          value={formatNumber(stats.totalBsb)}
+          hint="Yaratilgan bo'lim bo'yicha baholashlar"
+          tone="green"
+        />
+        <StatCard
+          label="ChSB"
+          value={formatNumber(stats.totalChsb)}
+          hint="Yaratilgan chorak bo'yicha baholashlar"
+          tone="amber"
+        />
+      </div>
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard
           label="Kutilayotgan to'lovlar"

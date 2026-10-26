@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { Badge, EmptyState, PlanBadge, Select, Spinner, TableShell, Td, Th, Input } from "@/components/ui";
 import { formatDate, formatName, formatNumber, initialsOf } from "@/lib/format";
 import { subscriptionStatus } from "@/lib/plan";
@@ -48,12 +49,7 @@ export function UsersTable({ initialUsers }: { initialUsers: AdminUser[] }) {
   const openDetail = async (user: AdminUser) => {
     setDetailLoading(true);
     setDetailError("");
-    setDetail({
-      ...user,
-      classCount: 0,
-      assessmentCount: 0,
-      payments: [],
-    });
+    setDetail({ ...user, payments: [] });
     try {
       const res = await fetch(`/api/admin/users/${encodeURIComponent(user.uid)}`);
       if (!res.ok) throw new Error("Yuklashda xatolik");
@@ -129,6 +125,10 @@ export function UsersTable({ initialUsers }: { initialUsers: AdminUser[] }) {
               <Th>Email</Th>
               <Th>Tarif</Th>
               <Th>Holat</Th>
+              <Th className="text-right">Sinflar</Th>
+              <Th className="text-right">O'quvchilar</Th>
+              <Th className="text-right">BSB</Th>
+              <Th className="text-right">ChSB</Th>
               <Th>Obuna tugashi</Th>
               <Th>Ro'yxatdan o'tgan</Th>
               <Th className="text-right">Amal</Th>
@@ -156,6 +156,10 @@ export function UsersTable({ initialUsers }: { initialUsers: AdminUser[] }) {
                   <Td>
                     <Badge tone={s.tone}>{s.label}</Badge>
                   </Td>
+                  <Td className="text-right tabular-nums text-gray-700 dark:text-gray-200">{formatNumber(user.classCount)}</Td>
+                  <Td className="text-right tabular-nums text-gray-700 dark:text-gray-200">{formatNumber(user.studentCount)}</Td>
+                  <Td className="text-right tabular-nums text-gray-700 dark:text-gray-200">{formatNumber(user.bsbCount)}</Td>
+                  <Td className="text-right tabular-nums text-gray-700 dark:text-gray-200">{formatNumber(user.chsbCount)}</Td>
                   <Td className="text-gray-600 dark:text-gray-300">
                     {user.plan === "free" || !user.planExpiry
                       ? "—"
@@ -165,13 +169,21 @@ export function UsersTable({ initialUsers }: { initialUsers: AdminUser[] }) {
                     {formatDate(user.createdAt)}
                   </Td>
                   <Td className="text-right">
-                    <button
-                      type="button"
-                      onClick={() => openDetail(user)}
-                      className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
-                    >
-                      Profil
-                    </button>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openDetail(user)}
+                        className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+                      >
+                        Profil
+                      </button>
+                      <Link
+                        href={`/dashboard/users/${encodeURIComponent(user.uid)}`}
+                        className="whitespace-nowrap rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-700"
+                      >
+                        Sinflar va BSB
+                      </Link>
+                    </div>
                   </Td>
                 </tr>
               );
@@ -278,10 +290,20 @@ function UserProfileModal({
                 label="Obuna tugashi"
                 value={detail.planExpiry ? formatDate(detail.planExpiry, true) : "—"}
               />
+              <InfoCell label="Maktab" value={detail.schoolName || "—"} />
               <InfoCell label="Sinflar" value={formatNumber(detail.classCount)} />
-              <InfoCell label="Baholashlar" value={formatNumber(detail.assessmentCount)} />
+              <InfoCell label="O'quvchilar" value={formatNumber(detail.studentCount)} />
+              <InfoCell label="BSB / ChSB" value={`${formatNumber(detail.bsbCount)} / ${formatNumber(detail.chsbCount)}`} />
+              <InfoCell label="Oxirgi faollik" value={formatDate(detail.lastActivity, true)} />
               <InfoCell label="UID" value={<span className="break-all font-mono text-xs">{detail.uid}</span>} />
             </div>
+
+            <Link
+              href={`/dashboard/users/${encodeURIComponent(detail.uid)}`}
+              className="mt-4 inline-flex rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700"
+            >
+              Sinflar, o&apos;quvchilar va BSB/ChSB natijalari →
+            </Link>
 
             <h3 className="mt-6 text-sm font-semibold text-gray-900 dark:text-gray-100">
               To'lov tarixi

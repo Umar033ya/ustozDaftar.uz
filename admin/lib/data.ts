@@ -13,9 +13,11 @@ import type {
   PaymentStatus,
   PlanId,
   PlanDistribution,
+  UserWorkspace,
 } from "@/lib/types";
 import { DAY_MS, PLAN_DURATION_DAYS, parseAmount, PLANS } from "@/lib/plan";
 import { toMillis } from "@/lib/format";
+import { buildWorkspace, summarizeWorkspace } from "@/lib/workspace";
 
 const USERS_COLLECTION = "users";
 const PAYMENTS_COLLECTION = "paymentRequests";
@@ -30,6 +32,10 @@ export const USER_PROJECTION = [
   "plan",
   "planExpiry",
 ] as const;
+
+// The teacher's classes and assessments live inside the user document, so the
+// list reads them too to count classes, students and BSB/ChSB per user.
+const USER_LIST_PROJECTION = [...USER_PROJECTION, "classes", "assessments"] as const;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -49,7 +55,7 @@ function normalizePlan(value: unknown): PlanId {
 
 function rawUserToBase(doc: { id: string; data: () => RawUser }): Omit<
   AdminUser,
-  "classCount" | "assessmentCount" | "hasUpcomingPayments"
+  keyof ReturnType<typeof summarizeWorkspace> | "hasUpcomingPayments"
 > {
   const data = doc.data() ?? {};
   return {
@@ -84,14 +90,12 @@ function rawPayment(data: Record<string, unknown>, id: string): PaymentRequest {
 }
 
 async function listUsers(): Promise<AdminUser[]> {
-  const snapshot = await getAdminFirestore().collection(USERS_COLLECTION).select(...USER_PROJECTION).get();
-  return snapshot.docs.map((doc) => {
-    const base = rawUserToBase(doc) as AdminUser;
-    base.classCount = 0;
-    base.assessmentCount = 0;
-    base.hasUpcomingPayments = false;
-    return base;
-  });
+  const snapshot = await getAdminFirestore().collection(USERS_COLLECTION).select(...USER_LIST_PROJECTION).get();
+  return snapshot.docs.map((doc) => ({
+    ...rawUserToBase(doc),
+    ...summarizeWorkspace(doc.data()),
+    hasUpcomingPayments: false,
+  }));
 }
 
 async function listPayments(limit = 5000): Promise<PaymentRequest[]> {
@@ -141,6 +145,11 @@ export async function getOverviewStats(): Promise<OverviewStats> {
     revenueEstimate,
     planDistribution: await planDistribution(users),
     recentPayments: payments.slice(0, 6),
+    totalClasses: users.reduce((sum, u) => sum + u.classCount, 0),
+    totalStudents: users.reduce((sum, u) => sum + u.studentCount, 0),
+    totalBsb: users.reduce((sum, u) => sum + u.bsbCount, 0),
+    totalChsb: users.reduce((sum, u) => sum + u.chsbCount, 0),
+    teachersWithClasses: users.filter((u) => u.classCount > 0).length,
   };
 }
 
@@ -151,12 +160,28 @@ export async function getUsers(): Promise<AdminUser[]> {
 export async function getUserDetail(uid: string): Promise<AdminUser | null> {
   const snap = await getAdminFirestore().collection(USERS_COLLECTION).doc(uid).get();
   if (!snap.exists) return null;
-  const user = rawUserToBase({ id: snap.id, data: () => snap.data() as RawUser }) as AdminUser;
-  const data = snap.data() ?? {};
-  user.classCount = Object.keys((data.classes as Record<string, unknown>) ?? {}).length;
-  user.assessmentCount = Object.keys((data.assessments as Record<string, unknown>) ?? {}).length;
-  user.hasUpcomingPayments = false;
-  return user;
+  return {
+    ...rawUserToBase({ id: snap.id, data: () => snap.data() as RawUser }),
+    ...summarizeWorkspace(snap.data()),
+    hasUpcomingPayments: false,
+  };
+}
+
+/** Profile + full workspace (classes, rosters, BSB/ChSB with results) of one teacher. */
+export async function getUserWorkspace(
+  uid: string
+): Promise<{ user: AdminUser; workspace: UserWorkspace } | null> {
+  const snap = await getAdminFirestore().collection(USERS_COLLECTION).doc(uid).get();
+  if (!snap.exists) return null;
+  const workspace = buildWorkspace(snap.data());
+  return {
+    user: {
+      ...rawUserToBase({ id: snap.id, data: () => snap.data() as RawUser }),
+      ...workspace.counts,
+      hasUpcomingPayments: false,
+    },
+    workspace,
+  };
 }
 
 export async function getUserPayments(uid: string): Promise<PaymentRequest[]> {
