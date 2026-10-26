@@ -1,4 +1,4 @@
-# Render Blueprint for the teacher app (frontend/).
+# Render Blueprint: teacher app (frontend/) and admin panel (admin/).
 # Secrets use `sync: false`: Render asks for them in the dashboard and they
 # are never stored in git.
 services:
@@ -42,4 +42,31 @@ services:
       # whsec_… from the inPAY dashboard webhook for
       # <APP_BASE_URL>/api/payments/inpay/webhook
       - key: INPAY_WEBHOOK_SECRET
+        sync: false
+
+  - type: web
+    name: ustozdaftar-admin
+    runtime: node
+    rootDir: admin
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /login
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Same Firebase project as the teacher app.
+      - key: NEXT_PUBLIC_FIREBASE_API_KEY
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_APP_ID
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT
         sync: false
