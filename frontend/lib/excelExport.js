@@ -64,6 +64,13 @@ function numCache(values, formatCode) {
 }
 
 /**
+ * <xdr:xfrm> is required inside <xdr:graphicFrame>. Excel mobile and most viewers
+ * tolerate it missing, but Excel desktop silently drops the whole drawing, so the
+ * file opens with the table only. The anchor decides the real size; zeros are fine.
+ */
+const GRAPHIC_FRAME_XFRM = `<xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm>`;
+
+/**
  * Apply borders to all cells in a range
  */
 function applyTableBorders(sheet, startRow, endRow, startCol, endCol) {
@@ -95,7 +102,7 @@ async function attachNativeChartsToZip(excelBuffer, sheetName, numStudents, numT
     if (!contentTypesXml.includes("drawing1.xml")) {
       contentTypesXml = contentTypesXml.replace(
         "</Types>",
-        `<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.drawing+xml"/>` +
+        `<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>` +
         `<Override PartName="/xl/charts/chart1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>` +
         (isBSB ? `<Override PartName="/xl/charts/chart2.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>` : "") +
         "</Types>"
@@ -146,11 +153,12 @@ async function attachNativeChartsToZip(excelBuffer, sheetName, numStudents, numT
         <xdr:cNvPr id="2" name="Student Chart"/>
         <xdr:cNvGraphicFramePr/>
       </xdr:nvGraphicFramePr>
-      <xdr:graphic>
+      ${GRAPHIC_FRAME_XFRM}
+      <a:graphic>
         <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">
           <c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rIdChart1"/>
         </a:graphicData>
-      </xdr:graphic>
+      </a:graphic>
     </xdr:graphicFrame>
     <xdr:clientData/>
   </xdr:twoCellAnchor>`;
@@ -165,11 +173,12 @@ async function attachNativeChartsToZip(excelBuffer, sheetName, numStudents, numT
         <xdr:cNvPr id="3" name="Task Chart"/>
         <xdr:cNvGraphicFramePr/>
       </xdr:nvGraphicFramePr>
-      <xdr:graphic>
+      ${GRAPHIC_FRAME_XFRM}
+      <a:graphic>
         <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">
           <c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rIdChart2"/>
         </a:graphicData>
-      </xdr:graphic>
+      </a:graphic>
     </xdr:graphicFrame>
     <xdr:clientData/>
   </xdr:twoCellAnchor>`;
