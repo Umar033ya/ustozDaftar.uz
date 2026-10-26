@@ -104,6 +104,19 @@ test("BSB export: native charts carry cached values for every student and task",
 
   const sheetXml = await zip.file("xl/worksheets/sheet1.xml").async("string");
   assert.ok(sheetXml.includes('<drawing r:id="rIdDrawing1"/></worksheet>'));
+
+  // Excel desktop drops a graphicFrame without <xdr:xfrm> (charts vanish on PC)
+  const drawing = await zip.file("xl/drawings/drawing1.xml").async("string");
+  const frames = drawing.match(/<xdr:graphicFrame[\s\S]*?<\/xdr:graphicFrame>/g);
+  assert.equal(frames.length, 2);
+  for (const frame of frames) {
+    // graphic lives in the DrawingML "a:" namespace; <xdr:graphic> makes Excel reject the drawing
+    assert.match(frame, /<\/xdr:nvGraphicFramePr>\s*<xdr:xfrm>[\s\S]*<\/xdr:xfrm>\s*<a:graphic>/);
+  }
+  const contentTypes = await zip.file("[Content_Types].xml").async("string");
+  assert.ok(contentTypes.includes(
+    '<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>'
+  ));
 });
 
 test("ChSB export: rows, blank totals and chart cache", async () => {
