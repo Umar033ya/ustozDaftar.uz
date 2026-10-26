@@ -19,7 +19,7 @@ import { Card, CardHeader, EmptyState } from "@/components/ui";
 import { formatUZS } from "@/lib/format";
 import type { PlanDistribution } from "@/lib/types";
 
-const PLAN_COLORS = { free: "#9ca3af", pro: "#3b82f6", max: "#8b5cf6" };
+const PLAN_COLORS = { free: "#d1d5db", pro: "#10b981", max: "#3b82f6" };
 
 function UzsTooltip({ active, payload, label }: { active?: boolean; payload?: unknown[]; label?: string }) {
   if (!active || !payload?.length) return null;

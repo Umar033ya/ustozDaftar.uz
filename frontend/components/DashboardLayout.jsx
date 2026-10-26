@@ -6,6 +6,7 @@ import Link from "next/link";
 import Logo from "./Logo";
 import LanguageSwitcher from "./LanguageSwitcher";
 import PlanBadge from "./PlanBadge";
+import SupportChat from "./SupportChat";
 import LoadingState from "./LoadingState";
 import { useAuth } from "@/lib/authContext";
 import { useSubscription } from "@/lib/subscriptionContext";
@@ -285,6 +286,8 @@ export default function DashboardLayout({ children }) {
         <div className="max-w-7xl mx-auto w-full">{children}</div>
       </main>
 
+      {/* Teachers write to the administrators here; admins answer from the admin panel. */}
+      {!isAdmin && <SupportChat />}
 
     </div>
   );

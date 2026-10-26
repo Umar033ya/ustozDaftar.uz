@@ -43,6 +43,12 @@ export default async function UserWorkspacePage({ params }: PageProps) {
         <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
           <PlanBadge plan={user.plan} />
           Ro&apos;yxatdan o&apos;tgan: {formatDate(user.createdAt)}
+          <Link
+            href={`/dashboard/chat?uid=${encodeURIComponent(user.uid)}`}
+            className="ml-2 rounded-lg bg-blue-600 px-3 py-1.5 font-semibold text-white hover:bg-blue-700"
+          >
+            Xabar yozish
+          </Link>
         </div>
       </div>
 

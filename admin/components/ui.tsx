@@ -35,10 +35,11 @@ export function Badge({
   tone = "gray",
 }: {
   children: ReactNode;
-  tone?: "gray" | "blue" | "green" | "red" | "amber" | "purple";
+  tone?: "gray" | "lightGray" | "blue" | "green" | "red" | "amber" | "purple";
 }) {
   const tones: Record<string, string> = {
     gray: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+    lightGray: "bg-gray-50 text-gray-500 ring-1 ring-inset ring-gray-200 dark:bg-gray-800/60 dark:text-gray-400 dark:ring-gray-700",
     blue: "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300",
     green: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300",
     red: "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300",
@@ -66,9 +67,9 @@ export function StatusBadge({ status }: { status: "pending" | "approved" | "reje
 
 export function PlanBadge({ plan }: { plan: "free" | "pro" | "max" }) {
   const map = {
-    free: { tone: "gray" as const, label: "Free" },
-    pro: { tone: "blue" as const, label: "Pro" },
-    max: { tone: "purple" as const, label: "Max" },
+    free: { tone: "lightGray" as const, label: "Free" },
+    pro: { tone: "green" as const, label: "Pro" },
+    max: { tone: "blue" as const, label: "Max" },
   };
   const item = map[plan];
   return <Badge tone={item.tone}>{item.label}</Badge>;

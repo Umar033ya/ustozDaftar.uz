@@ -94,6 +94,51 @@ export interface PaymentRequest {
   processedBy?: string;
 }
 
+/** inPAY online payment (inpayPayments/{id}); written only by the frontend server. */
+export type InpayStatus =
+  | "creating"
+  | "pending"
+  | "success"
+  | "failed"
+  | "cancelled"
+  | "expired"
+  | "review"
+  | "refunded";
+
+export interface InpayPayment {
+  id: string;
+  uid: string;
+  userName?: string;
+  userEmail?: string;
+  plan: PlanId;
+  billingPeriod: BillingPeriod;
+  amount: number;
+  status: InpayStatus;
+  livemode: boolean;
+  providerPaymentId?: string;
+  createdAt: number | null;
+  paidAt: number | null;
+}
+
+export interface ChatThread {
+  uid: string;
+  userName?: string;
+  userEmail?: string;
+  plan: PlanId;
+  planExpiry?: number | null;
+  lastMessage: string;
+  lastMessageAt: number;
+  lastSender: "user" | "admin";
+  unreadByAdmin: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  sender: "user" | "admin";
+  text: string;
+  createdAt: number;
+}
+
 export interface AuditLog {
   id: string;
   action: AuditAction;
@@ -119,6 +164,10 @@ export interface OverviewStats {
   approvedPayments: number;
   rejectedPayments: number;
   revenueEstimate: number;
+  /** Successful live inPAY payments (count and sum, UZS). */
+  inpaySucceeded: number;
+  inpayRevenue: number;
+  inpayPending: number;
   planDistribution: PlanDistribution;
   recentPayments: PaymentRequest[];
   /** Platform-wide workspace totals. */

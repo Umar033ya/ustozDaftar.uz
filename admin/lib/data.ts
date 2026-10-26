@@ -8,6 +8,8 @@ import type {
   AuditAction,
   AuditLog,
   BillingPeriod,
+  InpayPayment,
+  InpayStatus,
   OverviewStats,
   PaymentRequest,
   PaymentStatus,
@@ -21,7 +23,31 @@ import { buildWorkspace, summarizeWorkspace } from "@/lib/workspace";
 
 const USERS_COLLECTION = "users";
 const PAYMENTS_COLLECTION = "paymentRequests";
+const INPAY_COLLECTION = "inpayPayments";
 const AUDIT_COLLECTION = "auditLogs";
+
+// ─── Short-lived read cache ──────────────────────────────────────────────────
+// The user list reads every teacher document (with classes and assessments),
+// and Overview, Users, Subscriptions and Analytics all need it. Sharing one
+// result for a few seconds makes moving between pages fast; every admin
+// mutation below clears it, so this panel's own changes show up immediately.
+const CACHE_TTL_MS = 20_000;
+const memo = new Map<string, { value: Promise<unknown>; at: number }>();
+
+function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
+  const hit = memo.get(key);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value as Promise<T>;
+  const value = load();
+  memo.set(key, { value, at: Date.now() });
+  value.catch(() => {
+    if (memo.get(key)?.value === value) memo.delete(key);
+  });
+  return value;
+}
+
+export function invalidateAdminCache(): void {
+  memo.clear();
+}
 
 export const USER_PROJECTION = [
   "firstName",
@@ -89,22 +115,60 @@ function rawPayment(data: Record<string, unknown>, id: string): PaymentRequest {
   };
 }
 
-async function listUsers(): Promise<AdminUser[]> {
-  const snapshot = await getAdminFirestore().collection(USERS_COLLECTION).select(...USER_LIST_PROJECTION).get();
-  return snapshot.docs.map((doc) => ({
-    ...rawUserToBase(doc),
-    ...summarizeWorkspace(doc.data()),
-    hasUpcomingPayments: false,
-  }));
+function listUsers(): Promise<AdminUser[]> {
+  return cached("users", async () => {
+    const snapshot = await getAdminFirestore().collection(USERS_COLLECTION).select(...USER_LIST_PROJECTION).get();
+    return snapshot.docs.map((doc) => ({
+      ...rawUserToBase(doc),
+      ...summarizeWorkspace(doc.data()),
+      hasUpcomingPayments: false,
+    }));
+  });
 }
 
-async function listPayments(limit = 5000): Promise<PaymentRequest[]> {
-  const snapshot = await getAdminFirestore()
-    .collection(PAYMENTS_COLLECTION)
-    .orderBy("createdAt", "desc")
-    .limit(limit)
-    .get();
-  return snapshot.docs.map((doc) => rawPayment(doc.data() ?? {}, doc.id));
+function listPayments(limit = 5000): Promise<PaymentRequest[]> {
+  return cached(`payments:${limit}`, async () => {
+    const snapshot = await getAdminFirestore()
+      .collection(PAYMENTS_COLLECTION)
+      .orderBy("createdAt", "desc")
+      .limit(limit)
+      .get();
+    return snapshot.docs.map((doc) => rawPayment(doc.data() ?? {}, doc.id));
+  });
+}
+
+const INPAY_STATUSES: InpayStatus[] = [
+  "creating", "pending", "success", "failed", "cancelled", "expired", "review", "refunded",
+];
+
+function listInpayPayments(limit = 2000): Promise<InpayPayment[]> {
+  return cached(`inpay:${limit}`, async () => {
+    const [snapshot, users] = await Promise.all([
+      getAdminFirestore().collection(INPAY_COLLECTION).orderBy("createdAt", "desc").limit(limit).get(),
+      listUsers(),
+    ]);
+    const byUid = new Map(users.map((u) => [u.uid, u]));
+    return snapshot.docs.map((doc) => {
+      const data = doc.data() ?? {};
+      const uid = String(data.uid ?? "");
+      const user = byUid.get(uid);
+      const status = String(data.status ?? "") as InpayStatus;
+      return {
+        id: doc.id,
+        uid,
+        userName: user ? [user.firstName, user.lastName].filter(Boolean).join(" ") || undefined : undefined,
+        userEmail: user?.email,
+        plan: normalizePlan(data.plan),
+        billingPeriod: data.billingPeriod === "yearly" ? "yearly" : "monthly",
+        amount: Number(data.amount) || 0,
+        status: INPAY_STATUSES.includes(status) ? status : "pending",
+        livemode: data.livemode === true,
+        providerPaymentId: typeof data.providerPaymentId === "string" ? data.providerPaymentId : undefined,
+        createdAt: toMillis(data.createdAt),
+        paidAt: toMillis(data.paidAt),
+      };
+    });
+  });
 }
 
 async function planDistribution(users: AdminUser[]): Promise<PlanDistribution> {
@@ -117,7 +181,7 @@ async function planDistribution(users: AdminUser[]): Promise<PlanDistribution> {
 
 export async function getOverviewStats(): Promise<OverviewStats> {
   requireAdminCredentials();
-  const [users, payments] = await Promise.all([listUsers(), listPayments()]);
+  const [users, payments, inpay] = await Promise.all([listUsers(), listPayments(), listInpayPayments()]);
 
   const now = Date.now();
   const thirtyDaysAgo = now - 30 * DAY_MS;
@@ -133,7 +197,11 @@ export async function getOverviewStats(): Promise<OverviewStats> {
 
   // Revenue estimate = sum of approved request amounts (the real UZS strings
   // stored on each request). Never fabricated.
-  const revenueEstimate = approvedPayments.reduce((sum, p) => sum + parseAmount(p.amount), 0);
+  // inPAY: only verified, real-money (livemode) payments count as revenue.
+  const inpaySucceeded = inpay.filter((p) => p.status === "success" && p.livemode);
+  const inpayRevenue = inpaySucceeded.reduce((sum, p) => sum + p.amount, 0);
+  const revenueEstimate =
+    approvedPayments.reduce((sum, p) => sum + parseAmount(p.amount), 0) + inpayRevenue;
 
   return {
     totalUsers: users.length,
@@ -143,6 +211,9 @@ export async function getOverviewStats(): Promise<OverviewStats> {
     approvedPayments: approvedPayments.length,
     rejectedPayments,
     revenueEstimate,
+    inpaySucceeded: inpaySucceeded.length,
+    inpayRevenue,
+    inpayPending: inpay.filter((p) => p.status === "pending").length,
     planDistribution: await planDistribution(users),
     recentPayments: payments.slice(0, 6),
     totalClasses: users.reduce((sum, u) => sum + u.classCount, 0),
@@ -199,6 +270,10 @@ export async function getUserPayments(uid: string): Promise<PaymentRequest[]> {
 
 export async function getPayments(): Promise<PaymentRequest[]> {
   return listPayments();
+}
+
+export async function getInpayPayments(): Promise<InpayPayment[]> {
+  return listInpayPayments();
 }
 
 export async function getAuditLogs(limit = 300): Promise<AuditLog[]> {
@@ -300,6 +375,7 @@ export async function approvePayment(
 
     return { requestId, targetUid, targetEmail: userEmail, plan, planExpiry };
   });
+  invalidateAdminCache();
 
   await writeAudit({
     action: "payment.approve",
@@ -337,6 +413,7 @@ export async function rejectPayment(
     });
     return data;
   });
+  invalidateAdminCache();
 
   await writeAudit({
     action: "payment.reject",
@@ -383,6 +460,7 @@ export async function setUserSubscription(
     }
     return { plan, planExpiry, email };
   });
+  invalidateAdminCache();
 
   await writeAudit({
     action: "subscription.set",

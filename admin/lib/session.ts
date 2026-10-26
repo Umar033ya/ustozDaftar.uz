@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getAdminAuth, hasAdminCredentials } from "@/lib/firebaseAdmin";
@@ -28,8 +29,12 @@ function isAdminClaim(claims: Record<string, unknown> | undefined): boolean {
   return claims?.admin === true;
 }
 
-/** Verify the session cookie and require the server-assigned admin claim. */
-export async function getSessionAdmin(): Promise<AdminSessionUser | null> {
+/**
+ * Verify the session cookie and require the server-assigned admin claim.
+ * Wrapped in React.cache: the layout and the page of one request share a
+ * single verification (checkRevoked is a network call to Firebase).
+ */
+export const getSessionAdmin = cache(async (): Promise<AdminSessionUser | null> => {
   const token = await getSessionToken();
   if (!token) return null;
 
@@ -47,7 +52,7 @@ export async function getSessionAdmin(): Promise<AdminSessionUser | null> {
   } catch {
     return null;
   }
-}
+});
 
 /**
  * For dashboard layouts/pages: redirects to /login when there is no valid admin

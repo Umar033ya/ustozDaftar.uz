@@ -4,14 +4,13 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useTranslation } from "@/lib/useTranslation";
 import { useSubscription } from "@/lib/subscriptionContext";
-import { createOnlinePayment, ONLINE_PAYMENT_ENABLED } from "@/lib/onlinePayment";
+import { createOnlinePayment } from "@/lib/onlinePayment";
 import { BILLING_PERIODS, DAY_MS, formatSom, PAID_PLANS, yearlySavingPercent } from "@/lib/plans";
-import { useSubscriptionFlow } from "./SubscriptionFlow";
 import LoadingState from "./LoadingState";
 
 const PLAN_STYLE = {
-  pro: { ring: "border-blue-500 ring-1 ring-blue-500", accent: "text-blue-700", tick: "text-blue-600", button: "bg-blue-600 hover:bg-blue-700" },
-  max: { ring: "border-purple-500 ring-1 ring-purple-500", accent: "text-purple-700", tick: "text-purple-600", button: "bg-purple-600 hover:bg-purple-700" },
+  pro: { ring: "border-emerald-500 ring-1 ring-emerald-500", accent: "text-emerald-700", tick: "text-emerald-600", button: "bg-emerald-600 hover:bg-emerald-700" },
+  max: { ring: "border-blue-500 ring-1 ring-blue-500", accent: "text-blue-700", tick: "text-blue-600", button: "bg-blue-600 hover:bg-blue-700" },
 };
 
 function formatDate(ms) {
@@ -36,7 +35,6 @@ function Tick({ className }) {
 export default function SubscriptionPage() {
   const { t } = useTranslation();
   const { plan, planExpiry, isExpired, loading } = useSubscription();
-  const { openManual, dialogs } = useSubscriptionFlow();
   const params = useSearchParams();
   const [period, setPeriod] = useState(BILLING_PERIODS.includes(params.get("period")) ? params.get("period") : "monthly");
   const [busyPlan, setBusyPlan] = useState(null);
@@ -53,7 +51,6 @@ export default function SubscriptionPage() {
 
   const paid = plan === "pro" || plan === "max";
   const daysLeft = paid && planExpiry ? Math.max(0, Math.ceil((planExpiry - now) / DAY_MS)) : 0;
-  const periodLabel = period === "yearly" ? t("sub.billing.yearly") : t("sub.billing.monthly");
 
   const pay = async (planId) => {
     if (busyPlan) return;
@@ -121,11 +118,6 @@ export default function SubscriptionPage() {
         </div>
       </div>
 
-      {!ONLINE_PAYMENT_ENABLED && (
-        <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          {t("sub.online.unavailable")}
-        </p>
-      )}
       {error && (
         <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
           {error}
@@ -179,25 +171,15 @@ export default function SubscriptionPage() {
                 ))}
               </ul>
 
-              <div className="mt-6 space-y-2">
-                {ONLINE_PAYMENT_ENABLED && (
-                  <button
-                    type="button"
-                    onClick={() => pay(id)}
-                    disabled={Boolean(busyPlan)}
-                    aria-busy={busyPlan === id}
-                    className={`w-full rounded-lg px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors disabled:cursor-wait disabled:opacity-70 ${style.button}`}
-                  >
-                    {busyPlan === id ? t("sub.action.redirecting") : `${action} — ${t("sub.action.payOnline")}`}
-                  </button>
-                )}
+              <div className="mt-6">
                 <button
                   type="button"
-                  onClick={() => openManual(id, period)}
+                  onClick={() => pay(id)}
                   disabled={Boolean(busyPlan)}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-60"
+                  aria-busy={busyPlan === id}
+                  className={`w-full rounded-lg px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors disabled:cursor-wait disabled:opacity-70 ${style.button}`}
                 >
-                  {t("sub.manual.button", { plan: t(`pricing.${id}.name`), period: periodLabel })}
+                  {busyPlan === id ? t("sub.action.redirecting") : `${action} — ${t("sub.action.payOnline")}`}
                 </button>
               </div>
             </article>
@@ -206,14 +188,9 @@ export default function SubscriptionPage() {
       </div>
 
       <div className="space-y-1 text-xs text-gray-500">
-        {ONLINE_PAYMENT_ENABLED && <p>{t("sub.note.verified")}</p>}
+        <p>{t("sub.note.verified")}</p>
         {paid && daysLeft > 0 && <p>{t("sub.note.credit")}</p>}
-        <p>
-          <strong className="font-semibold text-gray-700">{t("sub.manual.title")}:</strong> {t("sub.manual.desc")}
-        </p>
       </div>
-
-      {dialogs}
     </div>
   );
 }

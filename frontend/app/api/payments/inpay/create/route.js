@@ -39,7 +39,7 @@ export async function POST(request) {
   const rt = paymentRuntime();
   if (!rt.ok) {
     console.error("[payments] inPAY is not configured; missing env:", rt.missing.join(", "));
-    return fail("Onlayn to'lov hozircha yoqilmagan. Karta orqali o'tkazma usulidan foydalaning.", 503, "not_configured");
+    return fail("Onlayn to'lov vaqtincha ishlamayapti. Birozdan so'ng qayta urinib ko'ring.", 503, "not_configured");
   }
 
   let body;

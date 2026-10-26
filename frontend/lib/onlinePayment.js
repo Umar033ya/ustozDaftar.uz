@@ -2,9 +2,6 @@
 
 import { authorizedFetch } from "./apiClient";
 
-/** Online payment is offered only when the deployment has inPAY configured. */
-export const ONLINE_PAYMENT_ENABLED = process.env.NEXT_PUBLIC_INPAY_ENABLED === "true";
-
 /**
  * Ask the server to create an inPAY payment for a plan. Only the plan and the
  * billing period are sent; the server decides the amount.
