@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { AuthError, ConfigError, requireAuth } from "@/lib/firebaseAdmin";
 import { analyzeStudentNames, missingRowNumbers } from "@/lib/studentNames";
-import { DEFAULT_MODEL, ExtractionError, extractStudents } from "@/lib/server/studentExtraction";
+import { ExtractionError, extractStudents, resolveModels } from "@/lib/server/studentExtraction";
 
 // This route is server-only. The OpenRouter key is read from process.env at
 // request time and is never sent to the browser: no NEXT_PUBLIC_ prefix is
@@ -162,7 +162,7 @@ export async function POST(request) {
   //    Student names are personal data: nothing the model returns is logged.
   let parsed;
   try {
-    parsed = await extractStudents({ apiKey, images, model: process.env.OPENROUTER_MODEL || DEFAULT_MODEL });
+    parsed = await extractStudents({ apiKey, images, model: resolveModels(process.env.OPENROUTER_MODEL) });
   } catch (error) {
     if (error instanceof ExtractionError) {
       return NextResponse.json(

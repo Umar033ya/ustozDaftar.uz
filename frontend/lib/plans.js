@@ -2,7 +2,7 @@
  * Paid plan catalog. The server uses ONLY these numbers to decide how much a
  * payment must be and how long it extends a subscription; nothing the browser
  * sends can change an amount. Values match the prices already shown in the UI
- * (PaymentModal / subscriptionContext) and the durations used by admin approval.
+ * (subscription page / subscriptionContext) and the durations used by admin approval.
  */
 export const PAID_PLANS = {
   pro: { monthly: { amount: 20_000, days: 30 }, yearly: { amount: 180_000, days: 365 } },

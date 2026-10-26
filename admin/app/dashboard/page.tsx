@@ -57,16 +57,49 @@ export default async function OverviewPage() {
         <StatCard
           label="Daromad (taxminiy)"
           value={formatUZS(stats.revenueEstimate)}
-          hint="Tasdiqlangan so'rovlar yig'indisi"
+          hint="Tasdiqlangan so'rovlar + inPAY (real) to'lovlari"
           tone="amber"
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          label="Kutilayotgan to'lovlar"
+          label="Yaratilgan sinflar"
+          value={formatNumber(stats.totalClasses)}
+          hint={`${formatNumber(stats.teachersWithClasses)} ta o'qituvchida sinf bor`}
+          tone="blue"
+        />
+        <StatCard
+          label="O'quvchilar"
+          value={formatNumber(stats.totalStudents)}
+          hint="Barcha sinflardagi o'quvchilar"
+          tone="purple"
+        />
+        <StatCard
+          label="BSB"
+          value={formatNumber(stats.totalBsb)}
+          hint="Yaratilgan bo'lim bo'yicha baholashlar"
+          tone="green"
+        />
+        <StatCard
+          label="ChSB"
+          value={formatNumber(stats.totalChsb)}
+          hint="Yaratilgan chorak bo'yicha baholashlar"
+          tone="amber"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="inPAY to'lovlari"
+          value={formatNumber(stats.inpaySucceeded)}
+          hint={`${formatUZS(stats.inpayRevenue)} · ${formatNumber(stats.inpayPending)} ta kutilmoqda`}
+          tone="blue"
+        />
+        <StatCard
+          label="Kutilayotgan so'rovlar"
           value={formatNumber(stats.pendingPayments)}
-          hint="Tasdiqlash kutilmoqda"
+          hint="Karta o'tkazmasi — tasdiqlash kutilmoqda"
           tone="amber"
         />
         <StatCard
@@ -102,8 +135,8 @@ export default async function OverviewPage() {
                       plan === "free"
                         ? "h-full bg-gray-300 dark:bg-gray-600"
                         : plan === "pro"
-                          ? "h-full bg-blue-500"
-                          : "h-full bg-purple-500"
+                          ? "h-full bg-emerald-500"
+                          : "h-full bg-blue-500"
                     }
                     style={{ width: `${planPercent(stats.planDistribution[plan])}%` }}
                   />

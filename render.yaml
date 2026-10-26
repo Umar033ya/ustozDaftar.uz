@@ -1,0 +1,45 @@
+# Render Blueprint for the teacher app (frontend/).
+# Secrets use `sync: false`: Render asks for them in the dashboard and they
+# are never stored in git.
+services:
+  - type: web
+    name: ustozdaftar
+    runtime: node
+    rootDir: frontend
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Public URL of this service, e.g. https://ustozdaftar.onrender.com
+      # (inPAY return_url / webhook_url are built from it).
+      - key: APP_BASE_URL
+        sync: false
+      # Firebase web config (inlined at build time).
+      - key: NEXT_PUBLIC_FIREBASE_API_KEY
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_APP_ID
+        sync: false
+      # Firebase Admin: the whole service-account JSON on one line.
+      - key: FIREBASE_SERVICE_ACCOUNT
+        sync: false
+      # AI student import (https://openrouter.ai/keys).
+      - key: OPENROUTER_API_KEY
+        sync: false
+      # inPAY: sk_live_… charges real money, sk_test_… is the sandbox.
+      - key: INPAY_SECRET_KEY
+        sync: false
+      # whsec_… from the inPAY dashboard webhook for
+      # <APP_BASE_URL>/api/payments/inpay/webhook
+      - key: INPAY_WEBHOOK_SECRET
+        sync: false

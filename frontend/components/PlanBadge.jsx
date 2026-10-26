@@ -3,9 +3,9 @@
 import { useTranslation } from "@/lib/useTranslation";
 
 const PLAN_STYLES = {
-  free: "bg-gray-100 text-gray-700 border-gray-300",
-  pro: "bg-blue-100 text-blue-700 border-blue-300",
-  max: "bg-purple-100 text-purple-700 border-purple-300",
+  free: "bg-gray-50 text-gray-500 border-gray-200",
+  pro: "bg-emerald-100 text-emerald-700 border-emerald-300",
+  max: "bg-blue-100 text-blue-700 border-blue-300",
 };
 
 export default function PlanBadge({ plan = "free", showText = true }) {

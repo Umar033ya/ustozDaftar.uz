@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAdminAuth, hasAdminCredentials } from "@/lib/firebaseAdmin";
+import { AdminConfigError, getAdminAuth, hasAdminCredentials } from "@/lib/firebaseAdmin";
 import { SESSION_COOKIE, sessionMaxAgeSeconds } from "@/lib/session";
 
 export const runtime = "nodejs";
@@ -59,6 +59,28 @@ export async function POST(req: Request) {
     return response;
   } catch (error) {
     console.error("[auth/login] session creation failed:", error);
+
+    // Only a rejected token (auth/id-token-expired, auth/invalid-id-token, ...)
+    // is the caller's fault. Admin SDK / service-account problems
+    // (AdminConfigError, app/invalid-credential, ...) are server errors and
+    // must not masquerade as "unauthorized".
+    const code =
+      typeof error === "object" && error !== null && "code" in error
+        ? String((error as { code?: unknown }).code ?? "")
+        : "";
+    const isTokenError =
+      code.startsWith("auth/") && code !== "auth/internal-error" && code !== "auth/insufficient-permission";
+    if (error instanceof AdminConfigError || !isTokenError) {
+      return NextResponse.json(
+        {
+          error: "ADMIN_CONFIG_ERROR",
+          message:
+            "Admin server sozlamalarida xatolik (service account). Server logini tekshiring.",
+        },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
       { error: "LOGIN_FAILED", message: "Kirish so'rovini qayta ishlashda xatolik yuz berdi." },
       { status: 401 }

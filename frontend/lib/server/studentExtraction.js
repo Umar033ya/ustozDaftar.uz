@@ -17,6 +17,23 @@ export const OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completion
 // Free vision model with structured outputs (response_format json_schema),
 // checked against https://openrouter.ai/api/v1/models on 2026-10-25.
 export const DEFAULT_MODEL = "dots-studio/dots-3-note-preview:free";
+// Free models are often rate limited or briefly offline. OpenRouter tries the
+// `models` list in order, so a second free vision model with structured
+// outputs (checked 2026-10-26) keeps the import working when the first is down.
+export const FALLBACK_MODELS = ["nvidia/nemotron-3.5-super-vl:free"];
+
+/**
+ * OPENROUTER_MODEL may name one model or a comma-separated chain
+ * ("primary,fallback1,..."); unset means DEFAULT_MODEL + FALLBACK_MODELS.
+ * @returns {string[]}
+ */
+export function resolveModels(setting) {
+  const models = String(setting || "")
+    .split(",")
+    .map((m) => m.trim())
+    .filter(Boolean);
+  return models.length > 0 ? [...new Set(models)] : [DEFAULT_MODEL, ...FALLBACK_MODELS];
+}
 export const MAX_ATTEMPTS = 2;
 const MAX_OUTPUT_TOKENS = 16_000; // reasoning models count their thinking here too
 const RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
@@ -83,15 +100,19 @@ export class ExtractionError extends Error {
   }
 }
 
-/** @param {{ mimeType: string, base64: string }[]} images */
+/**
+ * @param {{ mimeType: string, base64: string }[]} images
+ * @param {string | string[]} model one model id, or a fallback chain
+ */
 export function buildRequestBody(images, model = DEFAULT_MODEL) {
   const content = [{ type: "text", text: PROMPT }];
   images.forEach(({ mimeType, base64 }, index) => {
     if (images.length > 1) content.push({ type: "text", text: `Image ${index + 1} of ${images.length}:` });
     content.push({ type: "image_url", image_url: { url: `data:${mimeType};base64,${base64}` } });
   });
+  const chain = Array.isArray(model) ? model : [model];
   return {
-    model,
+    ...(chain.length > 1 ? { models: chain } : { model: chain[0] }),
     temperature: 0,
     max_tokens: MAX_OUTPUT_TOKENS,
     response_format: RESPONSE_SCHEMA,
@@ -172,7 +193,7 @@ export async function extractStudents({
     const truncatedOutput = choice?.finish_reason === "length";
     const parsed = parseModelText(text);
     log.info("[ai] answer", {
-      model,
+      model: json?.model ?? model,
       attempt,
       finishReason: choice?.finish_reason ?? null,
       promptTokens: json?.usage?.prompt_tokens ?? null,

@@ -6,7 +6,20 @@ export type AuditAction =
   | "payment.reject"
   | "subscription.set";
 
-export interface AdminUser {
+export type AssessmentType = "BSB" | "ChSB";
+
+/** Workspace counters of one teacher (classes, students, assessments). */
+export interface WorkspaceCounts {
+  classCount: number;
+  studentCount: number;
+  bsbCount: number;
+  chsbCount: number;
+  assessmentCount: number;
+  /** Latest class/assessment creation time — the app records no other activity. */
+  lastActivity: number | null;
+}
+
+export interface AdminUser extends WorkspaceCounts {
   uid: string;
   firstName?: string;
   lastName?: string;
@@ -15,9 +28,53 @@ export interface AdminUser {
   createdAt?: number | null;
   plan: PlanId;
   planExpiry?: number | null;
-  classCount: number;
-  assessmentCount: number;
   hasUpcomingPayments: boolean;
+}
+
+export interface WorkspaceStudent {
+  id: string;
+  name: string;
+  createdAt: number;
+}
+
+export interface WorkspaceClass {
+  id: string;
+  name: string;
+  academicYear: string;
+  createdAt: number | null;
+  students: WorkspaceStudent[];
+}
+
+export interface WorkspaceResult {
+  studentId: string;
+  studentName: string;
+  /** BSB task scores; null = not entered. Empty for ChSB. */
+  scores: (number | null)[];
+  total: number | null;
+  percentage: number | null;
+}
+
+export interface WorkspaceAssessment {
+  id: string;
+  type: AssessmentType;
+  classId: string;
+  className: string;
+  academicYear: string;
+  subject: string;
+  number: string | null;
+  date: string;
+  maxScore: number | null;
+  taskMaxScores: (number | null)[];
+  createdAt: number | null;
+  results: WorkspaceResult[];
+  enteredCount: number;
+  averagePercentage: number | null;
+}
+
+export interface UserWorkspace {
+  counts: WorkspaceCounts;
+  classes: WorkspaceClass[];
+  assessments: WorkspaceAssessment[];
 }
 
 export interface PaymentRequest {
@@ -35,6 +92,51 @@ export interface PaymentRequest {
   createdAt?: number | null;
   processedAt?: number | null;
   processedBy?: string;
+}
+
+/** inPAY online payment (inpayPayments/{id}); written only by the frontend server. */
+export type InpayStatus =
+  | "creating"
+  | "pending"
+  | "success"
+  | "failed"
+  | "cancelled"
+  | "expired"
+  | "review"
+  | "refunded";
+
+export interface InpayPayment {
+  id: string;
+  uid: string;
+  userName?: string;
+  userEmail?: string;
+  plan: PlanId;
+  billingPeriod: BillingPeriod;
+  amount: number;
+  status: InpayStatus;
+  livemode: boolean;
+  providerPaymentId?: string;
+  createdAt: number | null;
+  paidAt: number | null;
+}
+
+export interface ChatThread {
+  uid: string;
+  userName?: string;
+  userEmail?: string;
+  plan: PlanId;
+  planExpiry?: number | null;
+  lastMessage: string;
+  lastMessageAt: number;
+  lastSender: "user" | "admin";
+  unreadByAdmin: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  sender: "user" | "admin";
+  text: string;
+  createdAt: number;
 }
 
 export interface AuditLog {
@@ -62,6 +164,17 @@ export interface OverviewStats {
   approvedPayments: number;
   rejectedPayments: number;
   revenueEstimate: number;
+  /** Successful live inPAY payments (count and sum, UZS). */
+  inpaySucceeded: number;
+  inpayRevenue: number;
+  inpayPending: number;
   planDistribution: PlanDistribution;
   recentPayments: PaymentRequest[];
+  /** Platform-wide workspace totals. */
+  totalClasses: number;
+  totalStudents: number;
+  totalBsb: number;
+  totalChsb: number;
+  /** Users with at least one class. */
+  teachersWithClasses: number;
 }

@@ -2,7 +2,15 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { analyzeStudentNames, detectScript, missingRowNumbers } from "../lib/studentNames.js";
 import { parseModelText } from "../lib/parseModelText.js";
-import { buildRequestBody, extractStudents, ExtractionError, MAX_ATTEMPTS } from "../lib/server/studentExtraction.js";
+import {
+  buildRequestBody,
+  DEFAULT_MODEL,
+  extractStudents,
+  ExtractionError,
+  FALLBACK_MODELS,
+  MAX_ATTEMPTS,
+  resolveModels,
+} from "../lib/server/studentExtraction.js";
 
 const CYRILLIC_CLASS = [
   "Абдуллаев Жасур Бахтиёр ўғли", "Алиева Шаҳзода Рустам қизи", "Бекмуродов Ғайрат", "Ғаниев Ўктам",
@@ -104,6 +112,16 @@ test("request: every image sent exactly once, strict JSON schema requested", () 
   assert.equal(body.response_format.json_schema.strict, true);
   assert.equal(body.provider.require_parameters, true);
   assert.equal(body.temperature, 0);
+  assert.equal(body.model, DEFAULT_MODEL);
+});
+
+test("request: a model chain is sent as OpenRouter fallback `models`", () => {
+  const chain = resolveModels("");
+  assert.deepEqual(chain, [DEFAULT_MODEL, ...FALLBACK_MODELS]);
+  const body = buildRequestBody([{ mimeType: "image/png", base64: "A" }], chain);
+  assert.deepEqual(body.models, chain);
+  assert.equal(body.model, undefined);
+  assert.deepEqual(resolveModels(" a/x:free , b/y , a/x:free "), ["a/x:free", "b/y"]);
 });
 
 function fakeFetch(responses) {
