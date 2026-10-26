@@ -1,5 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // The repo root has its own package-lock.json; pin the workspace root to
+  // this app so Turbopack does not resolve from the monorepo root (Render
+  // builds with rootDir=frontend).
+  turbopack: {
+    root: process.cwd(),
+  },
+
   // Compress responses with gzip
   compress: true,
 
