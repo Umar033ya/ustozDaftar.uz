@@ -68,6 +68,8 @@ export interface WorkspaceClass {
   name: string;
   academicYear: string;
   createdAt: number | null;
+  /** Created from the admin panel (for one teacher or a whole school). */
+  createdByAdmin: boolean;
   students: WorkspaceStudent[];
 }
 

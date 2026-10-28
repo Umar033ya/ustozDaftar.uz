@@ -1,26 +1,31 @@
-const numberFormatter = new Intl.NumberFormat("uz-UZ");
+// Formatting is done by hand, not with Intl: the "uz" locale data differs
+// between Node and browsers ("23-okt, 2026" vs "2026 M10 23"), which made the
+// server and client render different text (hydration mismatch).
 
 export function formatNumber(value: number): string {
-  return numberFormatter.format(value);
+  if (!Number.isFinite(value)) return "—";
+  // at most 3 fraction digits, as Intl.NumberFormat did
+  const [int, frac] = String(Math.round(value * 1000) / 1000).split(".");
+  const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return frac ? `${grouped},${frac}` : grouped;
 }
 
 export function formatUZS(value: number): string {
-  return `${numberFormatter.format(Math.round(value))} so'm`;
+  return `${formatNumber(Math.round(value))} so'm`;
 }
+
+const MONTHS = ["yan", "fev", "mar", "apr", "may", "iyn", "iyl", "avg", "sen", "okt", "noy", "dek"];
+// Uzbekistan time (UTC+5, no daylight saving), so server and browser agree.
+const TASHKENT_OFFSET_MS = 5 * 60 * 60 * 1000;
 
 export function formatDate(value: number | null | undefined, withTime = false): string {
   if (!value) return "—";
-  const date = new Date(value);
-  try {
-    return new Intl.DateTimeFormat("uz-UZ", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}),
-    }).format(date);
-  } catch {
-    return date.toLocaleString();
-  }
+  const d = new Date(value + TASHKENT_OFFSET_MS);
+  if (Number.isNaN(d.getTime())) return "—";
+  const date = `${d.getUTCDate()}-${MONTHS[d.getUTCMonth()]}, ${d.getUTCFullYear()}`;
+  if (!withTime) return date;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date}, ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
 }
 
 export function formatDateTime(value: number | null | undefined): string {

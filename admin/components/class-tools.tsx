@@ -72,13 +72,19 @@ export function CreateClassForm({ endpoint, hint }: { endpoint: string; hint?: s
   if (!open) {
     return (
       <div className="space-y-2">
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-        >
-          + Sinf yaratish
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setSuccess("");
+              setOpen(true);
+            }}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            + Sinf yaratish
+          </button>
+          {hint && <p className="max-w-2xl text-xs text-gray-500 dark:text-gray-400">{hint}</p>}
+        </div>
         <Message error="" success={success} />
       </div>
     );

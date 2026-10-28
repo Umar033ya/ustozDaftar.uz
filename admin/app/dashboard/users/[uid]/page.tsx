@@ -4,6 +4,7 @@ import { AddStudentsForm, CreateClassForm } from "@/components/class-tools";
 import { UserActions } from "@/components/user-actions";
 import { Badge, Card, CardHeader, EmptyState, ErrorBanner, PlanBadge, StatCard, TableShell, Td, Th } from "@/components/ui";
 import { getUserWorkspace } from "@/lib/data";
+import { schoolKey } from "@/lib/schools";
 import { formatDate, formatName, formatNumber } from "@/lib/format";
 import type { AdminUser, UserWorkspace, WorkspaceAssessment, WorkspaceClass } from "@/lib/types";
 
@@ -39,7 +40,18 @@ export default async function UserWorkspacePage({ params }: PageProps) {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{formatName(user)}</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            {[user.email, user.schoolName].filter(Boolean).join(" · ") || "—"}
+            {user.email || "—"}
+            {user.schoolName && schoolKey(user.schoolName) && (
+              <>
+                {" · "}
+                <Link
+                  href={`/dashboard/schools/${encodeURIComponent(schoolKey(user.schoolName))}`}
+                  className="font-medium text-blue-600 hover:text-blue-700 hover:underline dark:text-blue-400"
+                >
+                  {user.schoolName}
+                </Link>
+              </>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
@@ -139,6 +151,7 @@ function ClassRow({ uid, cls, assessments }: { uid: string; cls: WorkspaceClass;
         <span className="text-gray-400 transition-transform group-open:rotate-90">▸</span>
         <span className="font-semibold text-gray-900 dark:text-gray-100">{cls.name || "Nomsiz sinf"}</span>
         {cls.academicYear && <span className="text-xs text-gray-500 dark:text-gray-400">{cls.academicYear}</span>}
+        {cls.createdByAdmin && <Badge tone="purple">Admin yaratgan</Badge>}
         <span className="ml-auto flex flex-wrap items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
           <Badge tone="blue">{formatNumber(cls.students.length)} o&apos;quvchi</Badge>
           <Badge tone="green">{formatNumber(bsb)} BSB</Badge>

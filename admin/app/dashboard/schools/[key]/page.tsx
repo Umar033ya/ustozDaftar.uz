@@ -14,13 +14,16 @@ interface PageProps {
 
 /** Distinct classes of the school (same name + year), with the teachers that have them. */
 function groupClasses(school: School) {
-  const groups = new Map<string, { name: string; academicYear: string; teachers: string[]; students: number }>();
+  const groups = new Map<
+    string,
+    { name: string; academicYear: string; teachers: { uid: string; name: string; students: number }[] }
+  >();
   for (const teacher of school.teachers) {
     for (const c of teacher.classes) {
       const id = `${c.name.trim().toLowerCase()}|${c.academicYear.trim()}`;
-      const group = groups.get(id) ?? { name: c.name, academicYear: c.academicYear, teachers: [], students: 0 };
-      group.teachers.push(teacher.name);
-      group.students = Math.max(group.students, c.studentCount);
+      const group = groups.get(id) ?? { name: c.name, academicYear: c.academicYear, teachers: [] };
+      // each teacher keeps their own roster, so their counts are shown separately
+      group.teachers.push({ uid: teacher.uid, name: teacher.name, students: c.studentCount });
       groups.set(id, group);
     }
   }
@@ -69,18 +72,30 @@ export default async function SchoolPage({ params }: PageProps) {
       </Card>
 
       <Card>
-        <CardHeader title="Sinflar" subtitle="Bir xil nom va o'quv yilidagi sinflar birlashtirilgan" />
+        <CardHeader
+          title="Sinflar"
+          subtitle="Bir xil nom va o'quv yilidagi sinflar birlashtirilgan · raqam — shu o'qituvchidagi o'quvchilar soni"
+        />
         {classes.length === 0 ? (
           <EmptyState title="Sinflar yo'q" description="Bu maktab o'qituvchilari hali sinf yaratmagan." />
         ) : (
           <div className="divide-y divide-gray-100 dark:divide-gray-800">
             {classes.map((c) => (
-              <div key={`${c.name}|${c.academicYear}`} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3">
+              <div key={`${c.name}|${c.academicYear}`} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3">
                 <span className="font-semibold text-gray-900 dark:text-gray-100">{c.name || "Nomsiz sinf"}</span>
                 <span className="text-xs text-gray-500 dark:text-gray-400">{c.academicYear}</span>
-                <span className="ml-auto flex flex-wrap items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
-                  <Badge tone="blue">{formatNumber(c.students)} o&apos;quvchi</Badge>
-                  <span>{c.teachers.join(", ")}</span>
+                <Badge tone="gray">{formatNumber(c.teachers.length)} o&apos;qituvchi</Badge>
+                <span className="ml-auto flex flex-wrap items-center justify-end gap-2 text-xs">
+                  {c.teachers.map((t) => (
+                    <Link
+                      key={t.uid}
+                      href={`/dashboard/users/${encodeURIComponent(t.uid)}`}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 px-2.5 py-0.5 text-gray-700 hover:border-blue-300 hover:text-blue-700 dark:border-gray-700 dark:text-gray-200 dark:hover:border-blue-700 dark:hover:text-blue-300"
+                    >
+                      {t.name}
+                      <span className="font-semibold tabular-nums text-blue-600 dark:text-blue-400">{formatNumber(t.students)}</span>
+                    </Link>
+                  ))}
                 </span>
               </div>
             ))}
@@ -110,7 +125,8 @@ export default async function SchoolPage({ params }: PageProps) {
                 <div className="flex flex-wrap gap-1.5">
                   {t.classes.map((c) => (
                     <Badge key={c.id} tone={c.createdByAdmin ? "purple" : "gray"}>
-                      {c.name} · {c.studentCount}
+                      {c.name} · {formatNumber(c.studentCount)} o&apos;quvchi
+                      {c.createdByAdmin ? " · admin" : ""}
                     </Badge>
                   ))}
                 </div>

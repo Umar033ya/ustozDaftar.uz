@@ -164,9 +164,11 @@ export function TableShell({ children }: { children: ReactNode }) {
 }
 
 export function Th({ children, className = "" }: { children: ReactNode; className?: string }) {
+  // text-left would override a text-center / text-right passed by the caller
+  const align = /\btext-(center|right)\b/.test(className) ? "" : "text-left";
   return (
     <th
-      className={`whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 ${className}`}
+      className={`whitespace-nowrap px-4 py-3 ${align} text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 ${className}`}
     >
       {children}
     </th>

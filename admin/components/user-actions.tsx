@@ -110,6 +110,7 @@ export function UserActions({
           <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">{notice}</p>
         )}
 
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Tarif</h3>
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
             Tarif
@@ -141,7 +142,8 @@ export function UserActions({
           </span>
         </div>
 
-        <div className="flex flex-wrap gap-2 border-t border-gray-100 pt-4 dark:border-gray-800">
+        <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4 dark:border-gray-800">
+          <h3 className="w-full text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Hisob</h3>
           <button
             type="button"
             onClick={() => setPending("block")}
@@ -160,6 +162,9 @@ export function UserActions({
           >
             O&apos;chirish
           </button>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Bloklash vaqtincha — ma&apos;lumotlar saqlanadi. O&apos;chirishni qaytarib bo&apos;lmaydi.
+          </p>
         </div>
       </div>
 
