@@ -8,8 +8,9 @@ import {
   useMemo,
   useState,
 } from "react";
+import { signOut } from "firebase/auth";
 import { doc, onSnapshot } from "firebase/firestore";
-import { db } from "./firebase";
+import { auth, db } from "./firebase";
 import { useAuth } from "./authContext";
 
 // Plan definitions. Activation always happens through an administrator reviewing
@@ -89,6 +90,11 @@ export function SubscriptionProvider({ children }) {
       (snap) => {
         if (snap.exists()) {
           const data = snap.data();
+          // An admin blocked this account while it was signed in.
+          if (data.blocked === true) {
+            signOut(auth).catch(() => {});
+            return;
+          }
           const newPlan = normalizePlan(data.plan);
           const newExpiry = toMillisFromFirestore(data.planExpiry);
           setPlan(newPlan);

@@ -53,6 +53,7 @@ function toClass(id: string, raw: unknown): WorkspaceClass {
     name: String(data.name ?? ""),
     academicYear: String(data.academicYear ?? ""),
     createdAt: toMillis(data.createdAt),
+    createdByAdmin: data.createdByAdmin === true,
     students,
   };
 }

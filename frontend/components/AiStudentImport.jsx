@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect, useMemo } from "react";
+import Link from "next/link";
 import { auth } from "@/lib/firebase";
+import { useSubscription } from "@/lib/subscriptionContext";
 import { cleanStudentName } from "@/lib/studentNames";
 import { addStudents, getStudents } from "@/lib/firestoreService";
 import { shrinkImage } from "@/lib/imageResize";
@@ -33,6 +35,7 @@ export default function AiStudentImport({
   onStudentsAdded,
   onNotify,
 }) {
+  const { isSubscribed, loading: planLoading } = useSubscription();
   const [open, setOpen] = useState(false);
   const [stage, setStage] = useState("upload");
   const [files, setFiles] = useState([]);
@@ -288,12 +291,17 @@ export default function AiStudentImport({
     setError(null);
   };
 
+  // AI import is a paid feature (Pro / Max); the server enforces the same rule.
+  const aiLocked = !isSubscribed;
+
   return (
     <>
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="bg-white text-blue-600 border border-blue-200 px-5 py-2.5 rounded-lg hover:bg-blue-50 font-medium flex items-center justify-center gap-2 text-sm sm:text-base transition-colors"
+        disabled={planLoading || aiLocked}
+        title={aiLocked && !planLoading ? "AI faqat Pro va Max tariflarida ishlaydi" : undefined}
+        className="bg-white text-blue-600 border border-blue-200 px-5 py-2.5 rounded-lg hover:bg-blue-50 font-medium flex items-center justify-center gap-2 text-sm sm:text-base transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white"
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path
@@ -304,7 +312,15 @@ export default function AiStudentImport({
           />
         </svg>
         AI orqali o&apos;quvchi qo&apos;shish
+        {aiLocked && !planLoading && (
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Pro</span>
+        )}
       </button>
+      {aiLocked && !planLoading && (
+        <Link href="/dashboard/subscription" className="text-xs font-medium text-blue-600 hover:text-blue-700 sm:self-center">
+          AI uchun Pro tarifga o&apos;ting →
+        </Link>
+      )}
 
       {open && (
         <div

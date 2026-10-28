@@ -4,7 +4,12 @@ export type PaymentStatus = "pending" | "approved" | "rejected";
 export type AuditAction =
   | "payment.approve"
   | "payment.reject"
-  | "subscription.set";
+  | "subscription.set"
+  | "user.block"
+  | "user.unblock"
+  | "user.delete"
+  | "class.create"
+  | "students.add";
 
 export type AssessmentType = "BSB" | "ChSB";
 
@@ -28,7 +33,28 @@ export interface AdminUser extends WorkspaceCounts {
   createdAt?: number | null;
   plan: PlanId;
   planExpiry?: number | null;
+  /** Set by an admin: Firebase Auth sign-in is disabled for this account. */
+  blocked: boolean;
   hasUpcomingPayments: boolean;
+}
+
+/** One teacher of a school with the classes in their workspace. */
+export interface SchoolTeacher {
+  uid: string;
+  name: string;
+  email?: string;
+  plan: PlanId;
+  blocked: boolean;
+  classes: { id: string; name: string; academicYear: string; studentCount: number; createdByAdmin: boolean }[];
+}
+
+/** Teachers grouped by their (normalized) profile school name. */
+export interface School {
+  key: string;
+  name: string;
+  teachers: SchoolTeacher[];
+  classCount: number;
+  studentCount: number;
 }
 
 export interface WorkspaceStudent {
@@ -42,6 +68,8 @@ export interface WorkspaceClass {
   name: string;
   academicYear: string;
   createdAt: number | null;
+  /** Created from the admin panel (for one teacher or a whole school). */
+  createdByAdmin: boolean;
   students: WorkspaceStudent[];
 }
 

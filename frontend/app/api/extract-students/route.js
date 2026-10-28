@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { AuthError, ConfigError, requireAuth } from "@/lib/firebaseAdmin";
 import { analyzeStudentNames, missingRowNumbers } from "@/lib/studentNames";
+import { checkAiAccess } from "@/lib/server/aiAccess";
 import { ExtractionError, extractStudents, resolveModels } from "@/lib/server/studentExtraction";
 
 // This route is server-only. The OpenRouter key is read from process.env at
@@ -90,6 +91,21 @@ export async function POST(request) {
 
     console.error("Firebase Admin token verification failed:", error);
     return errorResponse("Avtorizatsiyani tekshirib bo'lmadi.", 500, "auth_unavailable");
+  }
+
+  // 1b. Paid feature: only active Pro / Max accounts may call the model.
+  let access;
+  try {
+    access = await checkAiAccess(user.uid);
+  } catch (error) {
+    console.error("[ai] plan check failed:", error?.message);
+    return errorResponse("Tarifni tekshirib bo'lmadi. Qayta urinib ko'ring.", 500, "plan_check_failed");
+  }
+  if (access === "blocked") {
+    return errorResponse("Hisobingiz bloklangan.", 403, "blocked");
+  }
+  if (access !== "ok") {
+    return errorResponse("AI orqali o'quvchi qo'shish faqat Pro va Max tariflarida ishlaydi.", 403, "plan_required");
   }
 
   // 2. Abuse protection: basic per-user rate limit.

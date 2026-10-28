@@ -12,12 +12,22 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   "payment.approve": "To'lov tasdiqlandi",
   "payment.reject": "To'lov rad etildi",
   "subscription.set": "Tarif o'zgartirildi",
+  "user.block": "Foydalanuvchi bloklandi",
+  "user.unblock": "Blokdan chiqarildi",
+  "user.delete": "Foydalanuvchi o'chirildi",
+  "class.create": "Sinf yaratildi",
+  "students.add": "O'quvchilar qo'shildi",
 };
 
 const ACTION_TONES: Record<AuditAction, "green" | "red" | "blue"> = {
   "payment.approve": "green",
   "payment.reject": "red",
   "subscription.set": "blue",
+  "user.block": "red",
+  "user.unblock": "green",
+  "user.delete": "red",
+  "class.create": "blue",
+  "students.add": "blue",
 };
 
 export function AuditTable({ initialLogs }: { initialLogs: AuditLog[] }) {
@@ -70,6 +80,11 @@ export function AuditTable({ initialLogs }: { initialLogs: AuditLog[] }) {
           <option value="payment.approve">To'lov tasdiqlash</option>
           <option value="payment.reject">To'lov rad etish</option>
           <option value="subscription.set">Tarif o'zgarishi</option>
+          <option value="user.block">Bloklash</option>
+          <option value="user.unblock">Blokdan chiqarish</option>
+          <option value="user.delete">O'chirish</option>
+          <option value="class.create">Sinf yaratish</option>
+          <option value="students.add">O'quvchi qo'shish</option>
         </select>
         <p className="text-xs text-gray-500 dark:text-gray-400 sm:ml-auto">
           {formatNumber(filtered.length)} ta yozuv

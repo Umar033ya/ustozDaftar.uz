@@ -14,6 +14,19 @@ function applyWrite(prev, data) {
   return next;
 }
 
+const isPlainMap = (v) => v && typeof v === "object" && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype;
+
+/** set(..., { merge: true }) merges nested maps recursively, like Firestore. */
+function mergeWrite(prev, data) {
+  const next = { ...(prev || {}) };
+  for (const [k, v] of Object.entries(data)) {
+    if (isIncrement(v)) next[k] = (Number(next[k]) || 0) + v.n;
+    else if (isPlainMap(v) && isPlainMap(next[k])) next[k] = mergeWrite(next[k], v);
+    else next[k] = v;
+  }
+  return next;
+}
+
 const COMPARE = {
   "==": (a, b) => a === b,
   ">": (a, b) => a > b,
@@ -43,7 +56,7 @@ export function pathDb() {
         return snapshot(path, store.get(path));
       },
       async set(data, opts) {
-        store.set(path, applyWrite(opts?.merge ? store.get(path) : undefined, data));
+        store.set(path, opts?.merge ? mergeWrite(store.get(path), data) : applyWrite(undefined, data));
       },
       async update(data) {
         if (!store.has(path)) throw Object.assign(new Error("NOT_FOUND"), { code: 5 });
@@ -83,6 +96,11 @@ export function pathDb() {
       ...query(path),
       path,
       doc: (id) => docRef(`${path}/${id ?? `auto${String(++autoId).padStart(16, "0")}`}`),
+      async add(data) {
+        const ref = docRef(`${path}/auto${String(++autoId).padStart(16, "0")}`);
+        await ref.set(data);
+        return ref;
+      },
     };
   }
 

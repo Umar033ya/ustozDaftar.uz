@@ -144,9 +144,12 @@ export function UsersTable({ initialUsers }: { initialUsers: AdminUser[] }) {
                       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
                         {initialsOf(user)}
                       </span>
-                      <span className="font-medium text-gray-900 dark:text-gray-100">
+                      <Link
+                        href={`/dashboard/users/${encodeURIComponent(user.uid)}`}
+                        className="font-medium text-gray-900 hover:text-blue-600 hover:underline dark:text-gray-100 dark:hover:text-blue-400"
+                      >
                         {formatName(user)}
-                      </span>
+                      </Link>
                     </div>
                   </Td>
                   <Td className="text-gray-600 dark:text-gray-300">{user.email || "—"}</Td>
@@ -154,7 +157,7 @@ export function UsersTable({ initialUsers }: { initialUsers: AdminUser[] }) {
                     <PlanBadge plan={user.plan} />
                   </Td>
                   <Td>
-                    <Badge tone={s.tone}>{s.label}</Badge>
+                    {user.blocked ? <Badge tone="red">Bloklangan</Badge> : <Badge tone={s.tone}>{s.label}</Badge>}
                   </Td>
                   <Td className="text-right tabular-nums text-gray-700 dark:text-gray-200">{formatNumber(user.classCount)}</Td>
                   <Td className="text-right tabular-nums text-gray-700 dark:text-gray-200">{formatNumber(user.studentCount)}</Td>

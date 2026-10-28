@@ -150,6 +150,12 @@ export function AuthProvider({ children }) {
       if (user) {
         try {
           let profile = await getUserProfile(user.uid);
+          // Blocked by an admin: the Auth account is disabled too, this only
+          // ends a session that was opened before the block.
+          if (profile?.blocked === true) {
+            await signOut(auth).catch(() => {});
+            return;
+          }
           // A verified email change only lands once the user clicks the link, usually in
           // another session, so reconcile the profile copy here instead of leaving it stale.
           if (profile && user.email && profile.email !== user.email) {

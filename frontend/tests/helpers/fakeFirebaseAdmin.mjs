@@ -29,6 +29,9 @@ export const hasAdminCredentials = () => true;
 export const requireAdminCredentials = () => {};
 export const adminDb = () => state().db;
 export const getAdminFirestore = () => state().db;
+export const getAdminAuth = () => {
+  throw new Error("Firebase Auth is not faked in route tests");
+};
 
 export function readBearerToken(request) {
   const match = /^Bearer[ \t]+(\S+)$/i.exec((request.headers.get("authorization") || "").trim());
