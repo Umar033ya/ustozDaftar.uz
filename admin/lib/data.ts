@@ -57,6 +57,7 @@ export const USER_PROJECTION = [
   "createdAt",
   "plan",
   "planExpiry",
+  "blocked",
 ] as const;
 
 // The teacher's classes and assessments live inside the user document, so the
@@ -73,9 +74,10 @@ type RawUser = {
   createdAt?: unknown;
   plan?: string;
   planExpiry?: unknown;
+  blocked?: unknown;
 };
 
-function normalizePlan(value: unknown): PlanId {
+export function normalizePlan(value: unknown): PlanId {
   return PLANS.includes(value as PlanId) ? (value as PlanId) : "free";
 }
 
@@ -93,6 +95,7 @@ function rawUserToBase(doc: { id: string; data: () => RawUser }): Omit<
     createdAt: toMillis(data.createdAt),
     plan: normalizePlan(data.plan),
     planExpiry: toMillis(data.planExpiry),
+    blocked: data.blocked === true,
   };
 }
 
@@ -300,7 +303,7 @@ export async function getAuditLogs(limit = 300): Promise<AuditLog[]> {
 
 // ─── Admin mutations (server-side; require admin claim + Admin SDK) ─────────
 
-async function writeAudit(entry: {
+export async function writeAudit(entry: {
   action: AuditAction;
   actorUid: string;
   actorEmail?: string | null;

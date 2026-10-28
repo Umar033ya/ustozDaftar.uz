@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { AddStudentsForm, CreateClassForm } from "@/components/class-tools";
+import { UserActions } from "@/components/user-actions";
 import { Badge, Card, CardHeader, EmptyState, ErrorBanner, PlanBadge, StatCard, TableShell, Td, Th } from "@/components/ui";
 import { getUserWorkspace } from "@/lib/data";
 import { formatDate, formatName, formatNumber } from "@/lib/format";
@@ -42,6 +44,7 @@ export default async function UserWorkspacePage({ params }: PageProps) {
         </div>
         <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
           <PlanBadge plan={user.plan} />
+          {user.blocked && <Badge tone="red">Bloklangan</Badge>}
           Ro&apos;yxatdan o&apos;tgan: {formatDate(user.createdAt)}
           <Link
             href={`/dashboard/chat?uid=${encodeURIComponent(user.uid)}`}
@@ -59,17 +62,31 @@ export default async function UserWorkspacePage({ params }: PageProps) {
         <StatCard label="ChSB" value={formatNumber(user.chsbCount)} />
       </div>
 
+      <UserActions
+        uid={user.uid}
+        name={formatName(user)}
+        plan={user.plan}
+        planExpiry={user.planExpiry}
+        blocked={user.blocked}
+      />
+
       <Card>
         <CardHeader
           title="Sinflar"
-          subtitle="O'quvchilar ro'yxatini ko'rish uchun sinfni bosing"
+          subtitle="O'quvchilar ro'yxatini ko'rish yoki o'quvchi qo'shish uchun sinfni bosing"
         />
+        <div className="border-b border-gray-100 px-5 py-4 dark:border-gray-800">
+          <CreateClassForm
+            endpoint={`/api/admin/users/${encodeURIComponent(user.uid)}/classes`}
+            hint="Sinf shu o'qituvchining kabinetida paydo bo'ladi."
+          />
+        </div>
         {workspace.classes.length === 0 ? (
           <EmptyState title="Sinflar yo'q" description="Bu foydalanuvchi hali sinf yaratmagan." />
         ) : (
           <div className="divide-y divide-gray-100 dark:divide-gray-800">
             {workspace.classes.map((c) => (
-              <ClassRow key={c.id} cls={c} assessments={workspace.assessments.filter((a) => a.classId === c.id)} />
+              <ClassRow key={c.id} uid={user.uid} cls={c} assessments={workspace.assessments.filter((a) => a.classId === c.id)} />
             ))}
           </div>
         )}
@@ -113,7 +130,7 @@ function Summary({ children }: { children: React.ReactNode }) {
   );
 }
 
-function ClassRow({ cls, assessments }: { cls: WorkspaceClass; assessments: WorkspaceAssessment[] }) {
+function ClassRow({ uid, cls, assessments }: { uid: string; cls: WorkspaceClass; assessments: WorkspaceAssessment[] }) {
   const bsb = assessments.filter((a) => a.type === "BSB").length;
   const chsb = assessments.length - bsb;
   return (
@@ -139,6 +156,7 @@ function ClassRow({ cls, assessments }: { cls: WorkspaceClass; assessments: Work
             ))}
           </ol>
         )}
+        <AddStudentsForm uid={uid} classId={cls.id} />
       </div>
     </details>
   );

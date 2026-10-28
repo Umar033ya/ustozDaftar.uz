@@ -19,7 +19,7 @@ const AUTH_ERRORS = {
   "auth/invalid-login-credentials": "login.error.invalidCredentials",
   "auth/weak-password": "register.error.weakPassword",
   "auth/network-request-failed": "login.error.system",
-  "auth/user-disabled": "login.error.system",
+  "auth/user-disabled": "login.error.blocked",
 };
 
 function getErrorMessage(err) {

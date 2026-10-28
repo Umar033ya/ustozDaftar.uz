@@ -107,7 +107,7 @@ function generateId(existing) {
 
 // ─── USER PROFILE ─────────────────────────────────────────────────────────────
 
-const PROFILE_FIELDS = ["firstName", "lastName", "email", "schoolName", "createdAt"];
+const PROFILE_FIELDS = ["firstName", "lastName", "email", "schoolName", "createdAt", "blocked"];
 
 export async function getUserProfile(uid) {
   const data = await readUserDoc(uid);

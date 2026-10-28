@@ -24,13 +24,13 @@ service cloud.firestore {
       // A user can create their own profile, but must not provision a paid
       // plan/expiry or any privileged flag for themselves.
       allow create: if isOwner(uid)
-        && !request.resource.data.keys().hasAny(['plan', 'planExpiry', 'admin', 'isAdmin', 'role']);
+        && !request.resource.data.keys().hasAny(['plan', 'planExpiry', 'admin', 'isAdmin', 'role', 'blocked']);
 
       // A user may edit their own profile and data, but must never change their
       // own subscription plan/expiry or any privileged flag.
       allow update: if isOwner(uid)
         && !request.resource.data.diff(resource.data).affectedKeys()
-              .hasAny(['plan', 'planExpiry', 'admin', 'isAdmin', 'role']);
+              .hasAny(['plan', 'planExpiry', 'admin', 'isAdmin', 'role', 'blocked']);
 
       // Subscription activation: only an admin may update the plan fields,
       // and only those two fields.

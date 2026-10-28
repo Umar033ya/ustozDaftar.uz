@@ -154,7 +154,7 @@ export function UsersTable({ initialUsers }: { initialUsers: AdminUser[] }) {
                     <PlanBadge plan={user.plan} />
                   </Td>
                   <Td>
-                    <Badge tone={s.tone}>{s.label}</Badge>
+                    {user.blocked ? <Badge tone="red">Bloklangan</Badge> : <Badge tone={s.tone}>{s.label}</Badge>}
                   </Td>
                   <Td className="text-right tabular-nums text-gray-700 dark:text-gray-200">{formatNumber(user.classCount)}</Td>
                   <Td className="text-right tabular-nums text-gray-700 dark:text-gray-200">{formatNumber(user.studentCount)}</Td>

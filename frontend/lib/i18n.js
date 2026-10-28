@@ -95,6 +95,7 @@ export const translations = {
     "login.error.invalidEmail": "Noto'g'ri email manzili kiritildi",
     "login.error.tooManyRequests": "Juda ko'p muvaffaqiyatsiz urinish. Birozdan so'ng qayta urinib ko'ring.",
     "login.error.system": "Tizimga kirishda xatolik yuz berdi. Qayta urinib ko'ring.",
+    "login.error.blocked": "Hisobingiz administrator tomonidan bloklangan. Qo'llab-quvvatlash xizmatiga murojaat qiling.",
 
     // Register
     "register.title": "Ro'yxatdan o'tish",
@@ -553,6 +554,7 @@ export const translations = {
     "login.error.invalidEmail": "Нотўғри email манзили киритилди",
     "login.error.tooManyRequests": "Жуда кўп муваффақиятсиз уриниш. Бироздан сўнг қайта уриниб кўринг.",
     "login.error.system": "Тизимга киришда хатолик юз берди. Қайта уриниб кўринг.",
+    "login.error.blocked": "Ҳисобингиз администратор томонидан блокланган. Қўллаб-қувватлаш хизматига мурожаат қилинг.",
 
     // Register
     "register.title": "Рўйхатдан ўтиш",
@@ -1011,6 +1013,7 @@ export const translations = {
     "login.error.invalidEmail": "Введён неверный адрес email",
     "login.error.tooManyRequests": "Слишком много неудачных попыток. Попробуйте позже.",
     "login.error.system": "Ошибка при входе в систему. Попробуйте снова.",
+    "login.error.blocked": "Ваш аккаунт заблокирован администратором. Обратитесь в поддержку.",
 
     // Register
     "register.title": "Регистрация",
