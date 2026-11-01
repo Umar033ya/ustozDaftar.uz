@@ -9,6 +9,7 @@ import StudentPercentageChart from "@/components/StudentPercentageChart";
 import { exportChSBToExcel } from "@/lib/excelExport";
 import { isResultEntered, summarizeAssessment } from "@/lib/resultStats";
 import SaveStatus from "@/components/SaveStatus";
+import ResultTableToolbar, { matchesStudent, rowHighlightClass } from "@/components/ResultTableToolbar";
 import { useAuth } from "@/lib/authContext";
 import {
   getAssessmentById,
@@ -36,6 +37,8 @@ export default function ChSBResult() {
   const [saveError, setSaveError] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
+  const [studentSearch, setStudentSearch] = useState("");
+  const [highlightEntered, setHighlightEntered] = useState(false);
 
   useEffect(() => {
     if (!currentUser || !assessmentId) return;
@@ -295,6 +298,16 @@ export default function ChSBResult() {
           <StudentPercentageChart results={results} type="ChSB" title="O'quvchilar ChSB ko'rsatkichi (%)" />
         </div>
 
+        {/* Table search + entered/missing highlight (Hidden in Print) */}
+        <ResultTableToolbar
+          search={studentSearch}
+          onSearchChange={setStudentSearch}
+          highlight={highlightEntered}
+          onHighlightChange={setHighlightEntered}
+          enteredCount={results.filter((r) => isResultEntered(r, "ChSB")).length}
+          totalCount={results.length}
+        />
+
         {/* Official Printable Result Table */}
         <div className="overflow-x-auto rounded-lg border border-gray-300">
           <table className="w-full border-collapse text-xs sm:text-sm">
@@ -333,8 +346,15 @@ export default function ChSBResult() {
               </tr>
 
               {/* Dynamic Student Rows */}
-              {results.map((result, studentIndex) => (
-                <tr key={result.studentId} className="hover:bg-gray-50/80 transition-colors">
+              {results.map((result, studentIndex) => {
+                const rowColor = rowHighlightClass(isResultEntered(result, "ChSB"), highlightEntered);
+                // Rows hidden by the search still print, so the printed sheet is always complete.
+                const hiddenBySearch = !matchesStudent(result, studentSearch);
+                return (
+                <tr
+                  key={result.studentId}
+                  className={`transition-colors ${rowColor || "hover:bg-gray-50/80"} ${hiddenBySearch ? "hidden print:table-row" : ""}`}
+                >
                   <td className="px-3 py-2 border border-gray-300 text-center font-medium text-gray-700">
                     {studentIndex + 1}
                   </td>
@@ -351,7 +371,7 @@ export default function ChSBResult() {
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           e.preventDefault();
-                          const inputs = Array.from(document.querySelectorAll("table input[type='number']"));
+                          const inputs = Array.from(document.querySelectorAll("table input[type='number']")).filter((el) => el.offsetParent !== null);
                           const currentIndex = inputs.indexOf(e.target);
                           if (currentIndex >= 0 && inputs[currentIndex + 1]) {
                             inputs[currentIndex + 1].focus();
@@ -366,7 +386,8 @@ export default function ChSBResult() {
                     {isResultEntered(result, "ChSB") ? `${(Number(result.percentage) || 0).toFixed(1)}%` : "—"}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
 
             {/* Summary Footer */}

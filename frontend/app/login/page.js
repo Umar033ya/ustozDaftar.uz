@@ -2,9 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import Logo from "@/components/Logo";
-import LanguageSwitcher from "@/components/LanguageSwitcher";
+import AuthShell, { AuthField, AuthError, AuthSubmit, PasswordToggle, AUTH_ICONS } from "@/components/AuthShell";
 import { useAuth } from "@/lib/authContext";
 import { useTranslation } from "@/lib/useTranslation";
 
@@ -60,123 +58,51 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Navbar */}
-      <nav className="bg-white shadow-xs border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-3">
-              <Link href="/" className="flex items-center gap-2">
-                <Logo size="default" />
-                <div>
-                  <h1 className="text-xl font-bold text-gray-900">UstozDaftar.uz</h1>
-                  <p className="text-xs text-gray-500">{t("app.tagline")}</p>
-                </div>
-              </Link>
-              <LanguageSwitcher />
-            </div>
-            <Link href="/register" className="text-gray-700 hover:text-blue-600 font-medium text-sm">
-              {t("nav.register")}
-            </Link>
-          </div>
-        </div>
-      </nav>
+    <AuthShell
+      title={t("login.title")}
+      subtitle={t("login.subtitle")}
+      switchText={t("login.registerLink")}
+      switchHref="/register"
+      switchLabel={t("nav.register")}
+    >
+      <form className="space-y-5" onSubmit={handleSubmit} noValidate>
+        <AuthError message={error} />
 
-      {/* Login Form */}
-      <div className="flex-1 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-xs border border-gray-200">
-          <div>
-            <h2 className="text-center text-2xl sm:text-3xl font-bold text-gray-900">
-              {t("login.title")}
-            </h2>
-            <p className="mt-2 text-center text-sm text-gray-600">
-              {t("login.subtitle")}
-            </p>
-          </div>
+        <AuthField
+          id="email"
+          type="email"
+          autoComplete="email"
+          inputMode="email"
+          required
+          label={t("login.email")}
+          icon={AUTH_ICONS.email}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder={t("login.email.placeholder")}
+        />
 
-          <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm font-medium">
-                {error}
-              </div>
-            )}
+        <AuthField
+          id="password"
+          type={showPassword ? "text" : "password"}
+          autoComplete="current-password"
+          required
+          label={t("login.password")}
+          icon={AUTH_ICONS.lock}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder={t("login.password.placeholder")}
+          trailing={
+            <PasswordToggle
+              shown={showPassword}
+              onToggle={() => setShowPassword((v) => !v)}
+              showLabel={t("login.showPassword")}
+              hideLabel={t("login.hidePassword")}
+            />
+          }
+        />
 
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                  {t("login.email")}
-                </label>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="mt-1 block w-full px-3.5 py-2.5 border border-gray-300 rounded-lg shadow-xs text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder={t("login.email.placeholder")}
-                />
-              </div>
-
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                  {t("login.password")}
-                </label>
-                <div className="relative mt-1">
-                  <input
-                    id="password"
-                    name="password"
-                    type={showPassword ? "text" : "password"}
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="block w-full px-3.5 py-2.5 pr-11 border border-gray-300 rounded-lg shadow-xs text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder={t("login.password.placeholder")}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((v) => !v)}
-                    className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 transition-colors"
-                    title={showPassword ? t("login.hidePassword") : t("login.showPassword")}
-                    aria-label={showPassword ? t("login.hidePassword") : t("login.showPassword")}
-                    aria-pressed={showPassword}
-                  >
-                    {showPassword ? (
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18M10.58 10.58a2 2 0 002.83 2.83M9.9 4.24A9.12 9.12 0 0112 4c7 0 10 8 10 8a17.9 17.9 0 01-2.16 3.19M6.61 6.61A17.9 17.9 0 002 12s3 8 10 8a9.12 9.12 0 004.1-.9" />
-                      </svg>
-                    ) : (
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2 12s3-8 10-8 10 8 10 8-3 8-10 8-10-8-10-8z" />
-                        <circle cx="12" cy="12" r="3" />
-                      </svg>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-xs text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400"
-              >
-                {submitting ? t("login.submitting") : t("login.submit")}
-              </button>
-            </div>
-
-            <div className="text-center pt-2">
-              <p className="text-sm text-gray-600">
-                {t("login.registerLink")} {" "}
-                <Link href="/register" className="font-semibold text-blue-600 hover:text-blue-500">
-                  {t("nav.register")}
-                </Link>
-              </p>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
+        <AuthSubmit submitting={submitting} label={t("login.submit")} submittingLabel={t("login.submitting")} />
+      </form>
+    </AuthShell>
   );
 }

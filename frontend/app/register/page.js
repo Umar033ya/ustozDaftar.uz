@@ -2,9 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import Logo from "@/components/Logo";
-import LanguageSwitcher from "@/components/LanguageSwitcher";
+import AuthShell, { AuthField, AuthError, AuthSubmit, PasswordToggle, AUTH_ICONS } from "@/components/AuthShell";
 import { useAuth } from "@/lib/authContext";
 import { useTranslation } from "@/lib/useTranslation";
 
@@ -16,6 +14,17 @@ const AUTH_ERRORS = {
 
 function getErrorMessage(err) {
   return AUTH_ERRORS[err?.code] || "register.error.system";
+}
+
+const STRENGTH_COLORS = { 1: "bg-red-400", 2: "bg-amber-400", 3: "bg-emerald-500" };
+
+/** 1 = weak, 2 = fair, 3 = good. Purely a visual hint; the 6-char rule is enforced on submit. */
+function passwordStrength(password) {
+  if (!password) return 0;
+  let score = password.length >= 6 ? 1 : 0;
+  if (password.length >= 8 && /\d/.test(password) && /[a-zA-Z]/.test(password)) score++;
+  if (password.length >= 10 && (/[^a-zA-Z0-9]/.test(password) || /[A-Z]/.test(password))) score++;
+  return Math.max(score, 1);
 }
 
 export default function Register() {
@@ -43,7 +52,8 @@ export default function Register() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError("");      if (
+    setError("");
+    if (
       !formData.firstName.trim() ||
       !formData.lastName.trim() ||
       !formData.email.trim() ||
@@ -93,193 +103,114 @@ export default function Register() {
     }
   };
 
+  const strength = passwordStrength(formData.password);
+
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Navbar */}
-      <nav className="bg-white shadow-xs border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-3">
-              <Link href="/" className="flex items-center gap-2">
-                <Logo size="default" />
-                <div>
-                  <h1 className="text-xl font-bold text-gray-900">UstozDaftar.uz</h1>
-                  <p className="text-xs text-gray-500">{t("app.tagline")}</p>
-                </div>
-              </Link>
-              <LanguageSwitcher />
-            </div>
-            <Link href="/login" className="text-gray-700 hover:text-blue-600 font-medium text-sm">
-              {t("nav.login")}
-            </Link>
-          </div>
+    <AuthShell
+      title={t("register.title")}
+      subtitle={t("register.subtitle")}
+      switchText={t("register.loginLink")}
+      switchHref="/login"
+      switchLabel={t("nav.login")}
+    >
+      <form className="space-y-4" onSubmit={handleSubmit} noValidate>
+        <AuthError message={error} />
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <AuthField
+            id="firstName"
+            type="text"
+            autoComplete="given-name"
+            required
+            label={t("register.firstName")}
+            icon={AUTH_ICONS.user}
+            value={formData.firstName}
+            onChange={handleChange}
+            placeholder={t("register.firstName.placeholder")}
+          />
+          <AuthField
+            id="lastName"
+            type="text"
+            autoComplete="family-name"
+            required
+            label={t("register.lastName")}
+            value={formData.lastName}
+            onChange={handleChange}
+            placeholder={t("register.lastName.placeholder")}
+          />
         </div>
-      </nav>
 
-      {/* Register Form */}
-      <div className="flex-1 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-xs border border-gray-200">
-          <div>
-            <h2 className="text-center text-2xl sm:text-3xl font-bold text-gray-900">
-              {t("register.title")}
-            </h2>
-            <p className="mt-2 text-center text-sm text-gray-600">
-              {t("register.subtitle")}
-            </p>
-          </div>
+        <AuthField
+          id="email"
+          type="email"
+          autoComplete="email"
+          inputMode="email"
+          required
+          label={t("register.email")}
+          icon={AUTH_ICONS.email}
+          value={formData.email}
+          onChange={handleChange}
+          placeholder={t("register.email.placeholder")}
+        />
 
-          <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm font-medium">
-                {error}
-              </div>
-            )}
-
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">
-                  {t("register.firstName")}
-                </label>
-                <input
-                  id="firstName"
-                  name="firstName"
-                  type="text"
-                  required
-                  value={formData.firstName}
-                  onChange={handleChange}
-                  className="mt-1 block w-full px-3.5 py-2.5 border border-gray-300 rounded-lg shadow-xs text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder={t("register.firstName.placeholder")}
+        <div>
+          <AuthField
+            id="password"
+            type={showPassword ? "text" : "password"}
+            autoComplete="new-password"
+            required
+            label={t("register.password")}
+            icon={AUTH_ICONS.lock}
+            value={formData.password}
+            onChange={handleChange}
+            placeholder={t("register.password.placeholder")}
+            trailing={
+              <PasswordToggle
+                shown={showPassword}
+                onToggle={() => setShowPassword((v) => !v)}
+                showLabel={t("register.showPassword")}
+                hideLabel={t("register.hidePassword")}
+              />
+            }
+          />
+          {formData.password && (
+            <div className="mt-2 flex gap-1.5" aria-hidden>
+              {[1, 2, 3].map((level) => (
+                <span
+                  key={level}
+                  className={`h-1 flex-1 rounded-full transition-colors duration-300 ${
+                    strength >= level ? STRENGTH_COLORS[strength] : "bg-gray-200"
+                  }`}
                 />
-              </div>
-
-              <div>
-                <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">
-                  {t("register.lastName")}
-                </label>
-                <input
-                  id="lastName"
-                  name="lastName"
-                  type="text"
-                  required
-                  value={formData.lastName}
-                  onChange={handleChange}
-                  className="mt-1 block w-full px-3.5 py-2.5 border border-gray-300 rounded-lg shadow-xs text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder={t("register.lastName.placeholder")}
-                />
-              </div>
-
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                  {t("register.email")}
-                </label>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  required
-                  value={formData.email}
-                  onChange={handleChange}
-                  className="mt-1 block w-full px-3.5 py-2.5 border border-gray-300 rounded-lg shadow-xs text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder={t("register.email.placeholder")}
-                />
-              </div>
-
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                  {t("register.password")}
-                </label>
-                <div className="relative mt-1">
-                  <input
-                    id="password"
-                    name="password"
-                    type={showPassword ? "text" : "password"}
-                    required
-                    value={formData.password}
-                    onChange={handleChange}
-                    className="block w-full px-3.5 py-2.5 pr-11 border border-gray-300 rounded-lg shadow-xs text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder={t("register.password.placeholder")}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((v) => !v)}
-                    className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 transition-colors"
-                    title={showPassword ? t("register.hidePassword") : t("register.showPassword")}
-                    aria-label={showPassword ? t("register.hidePassword") : t("register.showPassword")}
-                    aria-pressed={showPassword}
-                  >
-                    {showPassword ? (
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18M10.58 10.58a2 2 0 002.83 2.83M9.9 4.24A9.12 9.12 0 0112 4c7 0 10 8 10 8a17.9 17.9 0 01-2.16 3.19M6.61 6.61A17.9 17.9 0 002 12s3 8 10 8a9.12 9.12 0 004.1-.9" />
-                      </svg>
-                    ) : (
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2 12s3-8 10-8 10 8 10 8-3 8-10 8-10-8-10-8z" />
-                        <circle cx="12" cy="12" r="3" />
-                      </svg>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
-                  {t("register.confirmPassword")}
-                </label>
-                <div className="relative mt-1">
-                  <input
-                    id="confirmPassword"
-                    name="confirmPassword"
-                    type={showConfirmPassword ? "text" : "password"}
-                    required
-                    value={formData.confirmPassword}
-                    onChange={handleChange}
-                    className="block w-full px-3.5 py-2.5 pr-11 border border-gray-300 rounded-lg shadow-xs text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder={t("register.confirmPassword.placeholder")}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword((v) => !v)}
-                    className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 transition-colors"
-                    title={showConfirmPassword ? t("register.hidePassword") : t("register.showPassword")}
-                    aria-label={showConfirmPassword ? t("register.hidePassword") : t("register.showPassword")}
-                    aria-pressed={showConfirmPassword}
-                  >
-                    {showConfirmPassword ? (
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18M10.58 10.58a2 2 0 002.83 2.83M9.9 4.24A9.12 9.12 0 0112 4c7 0 10 8 10 8a17.9 17.9 0 01-2.16 3.19M6.61 6.61A17.9 17.9 0 002 12s3 8 10 8a9.12 9.12 0 004.1-.9" />
-                      </svg>
-                    ) : (
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2 12s3-8 10-8 10 8 10 8-3 8-10 8-10-8-10-8z" />
-                        <circle cx="12" cy="12" r="3" />
-                      </svg>
-                    )}
-                  </button>
-                </div>
-              </div>
+              ))}
             </div>
-
-            <div>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-xs text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400"
-              >
-                {submitting ? t("register.submitting") : t("register.submit")}
-              </button>
-            </div>
-
-            <div className="text-center pt-2">
-              <p className="text-sm text-gray-600">
-                {t("register.loginLink")} {" "}
-                <Link href="/login" className="font-semibold text-blue-600 hover:text-blue-500">
-                  {t("nav.login")}
-                </Link>
-              </p>
-            </div>
-          </form>
+          )}
         </div>
-      </div>
-    </div>
+
+        <AuthField
+          id="confirmPassword"
+          type={showConfirmPassword ? "text" : "password"}
+          autoComplete="new-password"
+          required
+          label={t("register.confirmPassword")}
+          icon={AUTH_ICONS.lock}
+          value={formData.confirmPassword}
+          onChange={handleChange}
+          placeholder={t("register.confirmPassword.placeholder")}
+          trailing={
+            <PasswordToggle
+              shown={showConfirmPassword}
+              onToggle={() => setShowConfirmPassword((v) => !v)}
+              showLabel={t("register.showPassword")}
+              hideLabel={t("register.hidePassword")}
+            />
+          }
+        />
+
+        <div className="pt-1">
+          <AuthSubmit submitting={submitting} label={t("register.submit")} submittingLabel={t("register.submitting")} />
+        </div>
+      </form>
+    </AuthShell>
   );
 }

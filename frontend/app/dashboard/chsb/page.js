@@ -1,23 +1,37 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
 import LoadingState from "@/components/LoadingState";
+import AssessmentFilters, { filterAssessments } from "@/components/AssessmentFilters";
+import AssessmentCards from "@/components/AssessmentCards";
 import { useAuth } from "@/lib/authContext";
-import { getAssessments, deleteAssessment, getResults } from "@/lib/firestoreService";
+import { getAssessments, deleteAssessment, getResults, getClasses } from "@/lib/firestoreService";
 
 export default function ChSBList() {
   const { currentUser } = useAuth();
   const [assessments, setAssessments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [classes, setClasses] = useState([]);
+  const [search, setSearch] = useState("");
+  const [classId, setClassId] = useState("");
+
+  const visibleAssessments = useMemo(
+    () => filterAssessments(assessments, { search, classId, className: classes.find((c) => c.id === classId)?.name }),
+    [assessments, search, classId, classes]
+  );
 
   useEffect(() => {
     if (!currentUser) return;
 
     async function loadChSBList() {
       try {
-        const allAssessments = await getAssessments(currentUser.uid);
+        const [allAssessments, allClasses] = await Promise.all([
+          getAssessments(currentUser.uid),
+          getClasses(currentUser.uid).catch(() => []),
+        ]);
+        setClasses(allClasses);
         const chsbAssessments = allAssessments.filter((a) => a.type === "ChSB");
 
         const assessmentsWithStats = await Promise.all(
@@ -96,7 +110,21 @@ export default function ChSBList() {
           </Link>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
+        <>
+        <AssessmentFilters
+          search={search}
+          onSearchChange={setSearch}
+          classId={classId}
+          onClassChange={setClassId}
+          classes={classes}
+        />
+        <AssessmentCards
+          assessments={visibleAssessments}
+          label="ChSB"
+          basePath="/dashboard/chsb"
+          onDelete={handleDeleteAssessment}
+        />
+        <div className="hidden md:block bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead className="bg-gray-50 border-b border-gray-200">
@@ -125,7 +153,14 @@ export default function ChSBList() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {assessments.map((assessment) => (
+                {visibleAssessments.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-500">
+                      Hech narsa topilmadi
+                    </td>
+                  </tr>
+                )}
+                {visibleAssessments.map((assessment) => (
                   <tr key={assessment.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3.5 whitespace-nowrap text-sm font-semibold text-gray-900">
                       ChSB {assessment.number}
@@ -167,6 +202,7 @@ export default function ChSBList() {
             </table>
           </div>
         </div>
+        </>
       )}
     </DashboardLayout>
   );
