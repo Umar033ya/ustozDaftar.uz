@@ -69,16 +69,8 @@ export default function Home() {
         <section className="relative">
           <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 pb-16 pt-8 sm:px-6 sm:pb-24 sm:pt-14 lg:grid-cols-2 lg:gap-8 lg:px-8">
             <div className="text-center lg:text-left">
-              <span className="inline-flex items-center gap-2 rounded-full bg-white/80 px-3.5 py-1.5 text-xs sm:text-sm font-medium text-blue-700 shadow-sm ring-1 ring-blue-100 animate-fade-up">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-                </span>
-                {t("landing.badge")}
-              </span>
-
               <h1
-                className="mt-5 text-[2rem] leading-[1.15] sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-gray-900 animate-fade-up"
+                className="text-[2rem] leading-[1.15] sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-gray-900 animate-fade-up"
                 style={{ animationDelay: "80ms" }}
               >
                 {t("landing.hero.title")}{" "}
