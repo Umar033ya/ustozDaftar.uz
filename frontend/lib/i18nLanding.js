@@ -2,7 +2,6 @@
 
 export const landingTranslations = {
   "uz-latin": {
-    "landing.badge": "O'qituvchilar uchun BSB va ChSB yordamchisi",
     "landing.hero.title": "BSB va ChSB jadvallari endi",
     "landing.hero.titleAccent": "bir necha daqiqada",
     "landing.hero.subtitle":
@@ -37,7 +36,6 @@ export const landingTranslations = {
     "landing.auth.back": "Bosh sahifaga",
   },
   "uz-cyrillic": {
-    "landing.badge": "Ўқитувчилар учун БСБ ва ЧСБ ёрдамчиси",
     "landing.hero.title": "БСБ ва ЧСБ жадваллари энди",
     "landing.hero.titleAccent": "бир неча дақиқада",
     "landing.hero.subtitle":
@@ -72,7 +70,6 @@ export const landingTranslations = {
     "landing.auth.back": "Бош саҳифага",
   },
   ru: {
-    "landing.badge": "Помощник учителя для БСБ и ЧСБ",
     "landing.hero.title": "Таблицы БСБ и ЧСБ теперь",
     "landing.hero.titleAccent": "за несколько минут",
     "landing.hero.subtitle":
