@@ -8,6 +8,7 @@
 
 import { subscriptionTranslations } from "./i18nSubscription.js";
 import { supportTranslations } from "./i18nSupport.js";
+import { landingTranslations } from "./i18nLanding.js";
 
 export const DEFAULT_LANG = "uz-latin";
 export const STORAGE_KEY = "ustozdaftar_lang";
@@ -1400,6 +1401,7 @@ export const translations = {
 
 for (const [lang, extra] of Object.entries(subscriptionTranslations)) Object.assign(translations[lang], extra);
 for (const [lang, extra] of Object.entries(supportTranslations)) Object.assign(translations[lang], extra);
+for (const [lang, extra] of Object.entries(landingTranslations)) Object.assign(translations[lang], extra);
 
 /** Pure lookup with a safe fallback chain: lang -> default lang -> key. */
 export function translate(lang, key) {
