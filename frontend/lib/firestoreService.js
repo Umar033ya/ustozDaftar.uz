@@ -23,6 +23,11 @@ import { db } from "./firebase";
  *           |-- type / classId / className / academicYear / subject / number / date
  *           |-- tasks / maxTotal | maxScore / studentCount / createdAt
  *           `-- results/{studentId} -> { studentId, studentName, scores, total, percentage }
+ *     |-- tableSettings -> { showGrade, gradeThresholds }
+ *     `-- chsbReports/{reportId}
+ *           |-- classId / className / academicYear / subject / number / date
+ *           |-- questions[] (points of each question) / students/{studentId} -> { name }
+ *           `-- marks/{studentId}/{questionIndex} -> true (correct) | false (wrong)
  *
  * Every read and write goes through that one document, so the ownership check in the
  * rules keeps every user strictly inside their own data.
@@ -107,7 +112,7 @@ function generateId(existing) {
 
 // ─── USER PROFILE ─────────────────────────────────────────────────────────────
 
-const PROFILE_FIELDS = ["firstName", "lastName", "email", "schoolName", "createdAt", "blocked"];
+const PROFILE_FIELDS = ["firstName", "lastName", "email", "schoolName", "createdAt", "blocked", "tableSettings"];
 
 export async function getUserProfile(uid) {
   const data = await readUserDoc(uid);
@@ -505,4 +510,78 @@ export async function updateResult(uid, assessmentId, studentId, data) {
   }
 
   await patchUserDoc(uid, patch);
+}
+
+// ─── ChSB REPORTS ─────────────────────────────────────────────────────────────
+
+/**
+ * Reports live next to the assessments, not inside them: they have their own marks
+ * and must not be counted twice in the statistics. The current class roster decides
+ * the rows, so renamed, added and removed students are always right; the stored
+ * student list only serves a report whose class was deleted.
+ */
+function toChsbReport(id, raw, classes) {
+  const report = asMap(raw);
+  const roster = toStudentList(asMap(asMap(classes)[report.classId]));
+  const stored = Object.entries(asMap(report.students)).map(([studentId, student]) => ({
+    id: studentId,
+    name: asMap(student).name || "",
+  }));
+  return {
+    id,
+    classId: report.classId || "",
+    className: report.className || "",
+    academicYear: report.academicYear || "",
+    subject: report.subject || "",
+    number: report.number,
+    date: report.date || "",
+    questions: Array.isArray(report.questions) ? report.questions : [],
+    marks: asMap(report.marks),
+    students: [...(roster.length > 0 ? roster : stored)].sort((a, b) => a.name.localeCompare(b.name, "uz")),
+    createdAt: toMillis(report.createdAt),
+  };
+}
+
+export async function getChsbReports(uid) {
+  const data = asMap(await readUserDoc(uid));
+  return Object.entries(asMap(data.chsbReports))
+    .map(([id, raw]) => toChsbReport(id, raw, data.classes))
+    .sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id));
+}
+
+export async function getChsbReportById(uid, reportId) {
+  const data = asMap(await readUserDoc(uid));
+  const reports = asMap(data.chsbReports);
+  return hasKey(reports, reportId) ? toChsbReport(reportId, reports[reportId], data.classes) : null;
+}
+
+export async function createChsbReport(uid, reportData, students) {
+  const reports = asMap(asMap(await readUserDoc(uid)).chsbReports);
+  const reportId = generateId(reports);
+  const storedStudents = {};
+  for (const student of students) storedStudents[student.id] = { name: student.name || "" };
+
+  await patchUserDoc(uid, {
+    [`chsbReports.${reportId}`]: {
+      ...reportData,
+      students: storedStudents,
+      marks: {},
+      createdAt: Date.now(),
+    },
+  });
+
+  return reportId;
+}
+
+export async function deleteChsbReport(uid, reportId) {
+  await patchUserDoc(uid, { [`chsbReports.${reportId}`]: deleteField() });
+}
+
+/** @param {{ studentId: string, question: number, value: boolean | null }[]} changes null clears a mark */
+export async function saveChsbReportMarks(uid, reportId, changes) {
+  const patch = {};
+  for (const { studentId, question, value } of changes) {
+    patch[`chsbReports.${reportId}.marks.${studentId}.${question}`] = value === null ? deleteField() : value;
+  }
+  if (Object.keys(patch).length > 0) await patchUserDoc(uid, patch);
 }

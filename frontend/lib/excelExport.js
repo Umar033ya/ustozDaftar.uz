@@ -1,6 +1,8 @@
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import { isResultEntered } from "./resultStats.js";
+import { gradeFromPercentage } from "./grades.js";
+import { summarizeChsbReport } from "./chsbReport.js";
 
 /**
  * Trigger file download in browser
@@ -88,6 +90,17 @@ function applyTableBorders(sheet, startRow, endRow, startCol, endCol) {
       cell.border = borderStyle;
     }
   }
+}
+
+/** "Fan o'qituvchisi: ..." line under a table; it stays above the charts. */
+function addTeacherRow(sheet, rowNum, lastColumn, teacherName) {
+  if (!teacherName) return;
+  sheet.mergeCells(`A${rowNum}:${columnLetter(lastColumn)}${rowNum}`);
+  const cell = sheet.getCell(`A${rowNum}`);
+  cell.value = `Fan o'qituvchisi: ${teacherName}`;
+  cell.font = { name: "Arial", size: 11, bold: true, color: { argb: "111827" } };
+  cell.alignment = { horizontal: "left", vertical: "middle" };
+  sheet.getRow(rowNum).height = 22;
 }
 
 /**
@@ -280,13 +293,14 @@ async function attachNativeChartsToZip(excelBuffer, sheetName, numStudents, numT
 /**
  * Export BSB Results to Excel with official Uzbek school layout
  */
-export async function exportBSBToExcel(assessment, results, stats, schoolName = "") {
-  const { buffer, filename } = await buildBSBWorkbook(assessment, results, stats, schoolName);
+export async function exportBSBToExcel(assessment, results, stats, schoolName = "", options = {}) {
+  const { buffer, filename } = await buildBSBWorkbook(assessment, results, stats, schoolName, options);
   downloadBuffer(buffer, filename);
 }
 
 /** Build the BSB workbook without downloading it (used by the export and the tests). */
-export async function buildBSBWorkbook(assessment, results, stats, schoolName = "") {
+export async function buildBSBWorkbook(assessment, results, stats, schoolName = "", options = {}) {
+  const { teacherName = "", showGrade = false, gradeThresholds } = options;
   const workbook = new ExcelJS.Workbook();
   const sheetName = "BSB Natijalari";
   const sheet = workbook.addWorksheet(sheetName, {
@@ -296,7 +310,8 @@ export async function buildBSBWorkbook(assessment, results, stats, schoolName = 
 
   const numTasks = assessment.tasks.length;
   const numStudents = results.length; // EXACTLY N students!
-  const totalCols = 2 + numTasks + 2; // T/r, F.I.Sh, tasks..., Jami, %
+  const pctCol = 2 + numTasks + 2; // T/r, F.I.Sh, tasks..., Jami, %
+  const totalCols = pctCol + (showGrade ? 1 : 0); // ..., Baho
   const endColLetter = columnLetter(totalCols);
 
   // Row 1: School Name Banner
@@ -330,7 +345,7 @@ export async function buildBSBWorkbook(assessment, results, stats, schoolName = 
   // Row 5: Main Table Headers
   const taskHeaderLabels = assessment.tasks.map((t) => `${t.number}-topshiriq`);
   const headerRow = sheet.getRow(5);
-  headerRow.values = ["T/r", "F.I.Sh", ...taskHeaderLabels, "Jami", "%"];
+  headerRow.values = ["T/r", "F.I.Sh", ...taskHeaderLabels, "Jami", "%", ...(showGrade ? ["Baho"] : [])];
   headerRow.height = 26;
 
   for (let c = 1; c <= totalCols; c++) {
@@ -344,7 +359,7 @@ export async function buildBSBWorkbook(assessment, results, stats, schoolName = 
   // Row 6: Maximum Score Row
   const maxTaskScores = assessment.tasks.map((t) => t.maxScore);
   const maxRow = sheet.getRow(6);
-  maxRow.values = ["Maks", "-", ...maxTaskScores, assessment.maxTotal, 1.0];
+  maxRow.values = ["Maks", "-", ...maxTaskScores, assessment.maxTotal, 1.0, ...(showGrade ? [5] : [])];
   maxRow.height = 22;
 
   for (let c = 1; c <= totalCols; c++) {
@@ -352,7 +367,7 @@ export async function buildBSBWorkbook(assessment, results, stats, schoolName = 
     cell.font = { name: "Arial", size: 10, bold: true, color: { argb: "1E40AF" } };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "EFF6FF" } };
     cell.alignment = { horizontal: "center", vertical: "middle" };
-    if (c === totalCols) {
+    if (c === pctCol) {
       cell.numFmt = "0.0%";
     }
   }
@@ -371,7 +386,8 @@ export async function buildBSBWorkbook(assessment, results, stats, schoolName = 
     const entered = isResultEntered(result, "BSB");
     const pctVal = entered ? (Number(result.percentage) || 0) / 100 : null;
 
-    r.values = [idx + 1, result.studentName, ...studentScores, entered ? Number(result.total) || 0 : null, pctVal];
+    const grade = entered ? gradeFromPercentage(Number(result.percentage) || 0, gradeThresholds) : null;
+    r.values = [idx + 1, result.studentName, ...studentScores, entered ? Number(result.total) || 0 : null, pctVal, ...(showGrade ? [grade] : [])];
     r.height = 20;
 
     // Styling
@@ -380,9 +396,9 @@ export async function buildBSBWorkbook(assessment, results, stats, schoolName = 
       cell.font = { name: "Arial", size: 10 };
       cell.alignment = { horizontal: c === 2 ? "left" : "center", vertical: "middle", indent: c === 2 ? 1 : 0 };
 
-      if (c === totalCols - 1) {
+      if (c === pctCol - 1 || c === pctCol + 1) {
         cell.font = { name: "Arial", size: 10, bold: true };
-      } else if (c === totalCols) {
+      } else if (c === pctCol) {
         cell.font = { name: "Arial", size: 10, bold: true };
         cell.numFmt = "0.0%";
       }
@@ -410,7 +426,7 @@ export async function buildBSBWorkbook(assessment, results, stats, schoolName = 
     if (c >= 3 && c <= 2 + numTasks) {
       cell.numFmt = "0.0%";
       cell.font = { name: "Arial", size: 10, bold: true, color: { argb: "1D4ED8" } };
-    } else if (c === totalCols) {
+    } else if (c === pctCol) {
       cell.numFmt = "0.0%";
       cell.font = { name: "Arial", size: 10, bold: true, color: { argb: "1D4ED8" } };
     }
@@ -425,8 +441,11 @@ export async function buildBSBWorkbook(assessment, results, stats, schoolName = 
   for (let i = 3; i <= 2 + numTasks; i++) {
     sheet.getColumn(i).width = 14;
   }
-  sheet.getColumn(totalCols - 1).width = 12;
-  sheet.getColumn(totalCols).width = 12;
+  sheet.getColumn(pctCol - 1).width = 12;
+  sheet.getColumn(pctCol).width = 12;
+  if (showGrade) sheet.getColumn(pctCol + 1).width = 9;
+
+  addTeacherRow(sheet, summaryRowNum + 2, totalCols, teacherName);
 
   // Build Excel Buffer & Attach Native OpenXML Chart
   const rawBuffer = await workbook.xlsx.writeBuffer();
@@ -444,13 +463,14 @@ export async function buildBSBWorkbook(assessment, results, stats, schoolName = 
 /**
  * Export ChSB Results to Excel with official Uzbek school layout
  */
-export async function exportChSBToExcel(assessment, results, stats, schoolName = "") {
-  const { buffer, filename } = await buildChSBWorkbook(assessment, results, stats, schoolName);
+export async function exportChSBToExcel(assessment, results, stats, schoolName = "", options = {}) {
+  const { buffer, filename } = await buildChSBWorkbook(assessment, results, stats, schoolName, options);
   downloadBuffer(buffer, filename);
 }
 
 /** Build the ChSB workbook without downloading it (used by the export and the tests). */
-export async function buildChSBWorkbook(assessment, results, stats, schoolName = "") {
+export async function buildChSBWorkbook(assessment, results, stats, schoolName = "", options = {}) {
+  const { teacherName = "", showGrade = false, gradeThresholds } = options;
   const workbook = new ExcelJS.Workbook();
   const sheetName = "ChSB Natijalari";
   const sheet = workbook.addWorksheet(sheetName, {
@@ -459,10 +479,12 @@ export async function buildChSBWorkbook(assessment, results, stats, schoolName =
   });
 
   const numStudents = results.length; // EXACTLY N students!
-  const totalCols = 4; // T/r, F.I.Sh, Jami, %
+  const pctCol = 4; // T/r, F.I.Sh, Jami, %
+  const totalCols = pctCol + (showGrade ? 1 : 0); // ..., Baho
+  const endColLetter = columnLetter(totalCols);
 
   // Row 1: School Name Banner
-  sheet.mergeCells("A1:D1");
+  sheet.mergeCells(`A1:${endColLetter}1`);
   const bannerCell = sheet.getCell("A1");
   bannerCell.value = (schoolName || "MAKTAB NOMI KIRITILMAGAN").toUpperCase();
   bannerCell.font = { name: "Arial", size: 14, bold: true, color: { argb: "FFFFFF" } };
@@ -471,7 +493,7 @@ export async function buildChSBWorkbook(assessment, results, stats, schoolName =
   sheet.getRow(1).height = 30;
 
   // Row 2: Official Assessment Title Header
-  sheet.mergeCells("A2:D2");
+  sheet.mergeCells(`A2:${endColLetter}2`);
   const titleCell = sheet.getCell("A2");
   titleCell.value = `${assessment.className}-sinf o'quvchilarining ${assessment.subject} fanidan ${assessment.academicYear}-o'quv yili ${assessment.number}-ChSB natijalari jadvallari`;
   titleCell.font = { name: "Arial", size: 12, bold: true, color: { argb: "1F2937" } };
@@ -479,7 +501,7 @@ export async function buildChSBWorkbook(assessment, results, stats, schoolName =
   sheet.getRow(2).height = 24;
 
   // Row 3: Assessment Information Metadata
-  sheet.mergeCells("A3:D3");
+  sheet.mergeCells(`A3:${endColLetter}3`);
   const metaCell = sheet.getCell("A3");
   metaCell.value = `O'quv yili: ${assessment.academicYear}   |   O'tkazilgan sana: ${assessment.date}   |   Maksimal ball: ${assessment.maxScore}`;
   metaCell.font = { name: "Arial", size: 10, italic: true, bold: true, color: { argb: "4B5563" } };
@@ -491,7 +513,7 @@ export async function buildChSBWorkbook(assessment, results, stats, schoolName =
 
   // Row 5: Main Table Headers
   const headerRow = sheet.getRow(5);
-  headerRow.values = ["T/r", "F.I.Sh", "Jami ball", "%"];
+  headerRow.values = ["T/r", "F.I.Sh", "Jami ball", "%", ...(showGrade ? ["Baho"] : [])];
   headerRow.height = 26;
 
   for (let c = 1; c <= totalCols; c++) {
@@ -504,7 +526,7 @@ export async function buildChSBWorkbook(assessment, results, stats, schoolName =
 
   // Row 6: Maximum Score Row
   const maxRow = sheet.getRow(6);
-  maxRow.values = ["Maks", "-", assessment.maxScore, 1.0];
+  maxRow.values = ["Maks", "-", assessment.maxScore, 1.0, ...(showGrade ? [5] : [])];
   maxRow.height = 22;
 
   for (let c = 1; c <= totalCols; c++) {
@@ -512,7 +534,7 @@ export async function buildChSBWorkbook(assessment, results, stats, schoolName =
     cell.font = { name: "Arial", size: 10, bold: true, color: { argb: "1E40AF" } };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "EFF6FF" } };
     cell.alignment = { horizontal: "center", vertical: "middle" };
-    if (c === totalCols) {
+    if (c === pctCol) {
       cell.numFmt = "0.0%";
     }
   }
@@ -525,7 +547,8 @@ export async function buildChSBWorkbook(assessment, results, stats, schoolName =
     const scoreVal = entered ? Number(result.total) : null;
     const pctVal = entered ? (Number(result.percentage) || 0) / 100 : null;
 
-    r.values = [idx + 1, result.studentName, scoreVal, pctVal];
+    const grade = entered ? gradeFromPercentage(Number(result.percentage) || 0, gradeThresholds) : null;
+    r.values = [idx + 1, result.studentName, scoreVal, pctVal, ...(showGrade ? [grade] : [])];
     r.height = 20;
 
     for (let c = 1; c <= totalCols; c++) {
@@ -533,7 +556,7 @@ export async function buildChSBWorkbook(assessment, results, stats, schoolName =
       cell.font = { name: "Arial", size: 10 };
       cell.alignment = { horizontal: c === 2 ? "left" : "center", vertical: "middle", indent: c === 2 ? 1 : 0 };
 
-      if (c === 3) {
+      if (c === 3 || c === 5) {
         cell.font = { name: "Arial", size: 10, bold: true };
       } else if (c === 4) {
         cell.font = { name: "Arial", size: 10, bold: true };
@@ -573,6 +596,9 @@ export async function buildChSBWorkbook(assessment, results, stats, schoolName =
   sheet.getColumn(2).width = 34;
   sheet.getColumn(3).width = 14;
   sheet.getColumn(4).width = 14;
+  if (showGrade) sheet.getColumn(5).width = 9;
+
+  addTeacherRow(sheet, summaryRowNum + 2, totalCols, teacherName);
 
   // Build Excel Buffer & Attach Native OpenXML Chart
   const rawBuffer = await workbook.xlsx.writeBuffer();
@@ -583,4 +609,130 @@ export async function buildChSBWorkbook(assessment, results, stats, schoolName =
 
   const filename = safeFilename(`${assessment.className}_${assessment.subject}_ChSB-${assessment.number}.xlsx`);
   return { buffer: finalBuffer, filename };
+}
+
+/**
+ * Export a ChSB report (the "bayonnoma" sheet) to Excel
+ */
+export async function exportChsbReportToExcel(report, summary, schoolName = "", options = {}) {
+  const { buffer, filename } = await buildChsbReportWorkbook(report, summary, schoolName, options);
+  downloadBuffer(buffer, filename);
+}
+
+/** Build the ChSB report workbook without downloading it (used by the export and the tests). */
+export async function buildChsbReportWorkbook(report, summary, schoolName = "", options = {}) {
+  const { teacherName = "", showGrade = false, gradeThresholds } = options;
+  const data = summary || summarizeChsbReport(report, report.students);
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("ChSB hisoboti", {
+    pageSetup: { orientation: "landscape", paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+    views: [{ state: "frozen", xSplit: 2, ySplit: 7 }],
+  });
+
+  const questionCount = report.questions.length;
+  const ballCol = 3 + questionCount;
+  const pctCol = ballCol + 1;
+  const totalCols = pctCol + (showGrade ? 1 : 0);
+  const endColLetter = columnLetter(totalCols);
+  const grayFill = { type: "pattern", pattern: "solid", fgColor: { argb: "E5E7EB" } };
+
+  const titleRow = (rowNum, text, font, height) => {
+    sheet.mergeCells(`A${rowNum}:${endColLetter}${rowNum}`);
+    const cell = sheet.getCell(`A${rowNum}`);
+    cell.value = text;
+    cell.font = { name: "Arial", ...font };
+    cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    sheet.getRow(rowNum).height = height;
+  };
+
+  titleRow(1, "BAYONNOMA", { size: 14, bold: true }, 26);
+  titleRow(2, `${report.className} sinfida ${report.subject} fanidan ${report.number}-ChSBni o'tkazish bo'yicha`, { size: 12, bold: true }, 22);
+  titleRow(3, schoolName, { size: 11 }, 20);
+  titleRow(
+    4,
+    `O'tkazilgan sanasi: ${report.date}   |   Sinfdagi o'quvchilar soni: ${data.studentCount}   |   Ishtirok etdi: ${data.participatedCount}   |   Ishtirok etmadi: ${data.absentCount}`,
+    { size: 10, bold: true, color: { argb: "4B5563" } },
+    20
+  );
+  sheet.getRow(5).height = 8;
+
+  const headerRow = sheet.getRow(6);
+  headerRow.values = ["T/r", "O'quvchilarning ism-familiyasi", ...report.questions.map((_, q) => q + 1), "Ball", "%", ...(showGrade ? ["Baho"] : [])];
+  headerRow.height = 26;
+  for (let c = 1; c <= totalCols; c++) {
+    const cell = headerRow.getCell(c);
+    cell.font = { name: "Arial", size: 11, bold: true, color: { argb: "FFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "2563EB" } };
+    cell.alignment = { horizontal: c === 2 ? "left" : "center", vertical: "middle", indent: c === 2 ? 1 : 0 };
+  }
+
+  const maxRow = sheet.getRow(7);
+  maxRow.values = ["Maks", "Savol bo'yicha maksimal ball", ...report.questions, data.maxScore, 1, ...(showGrade ? [5] : [])];
+  maxRow.height = 22;
+  for (let c = 1; c <= totalCols; c++) {
+    const cell = maxRow.getCell(c);
+    cell.font = { name: "Arial", size: 10, bold: true, color: { argb: "1E40AF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "EFF6FF" } };
+    cell.alignment = { horizontal: c === 2 ? "left" : "center", vertical: "middle", indent: c === 2 ? 1 : 0 };
+    if (c === pctCol) cell.numFmt = "0%";
+  }
+
+  data.rows.forEach((row, index) => {
+    const r = sheet.getRow(8 + index);
+    // An unchecked question stays blank, a wrong answer is a real 0
+    const scores = row.marks.map((mark, q) => (mark === null ? null : mark ? report.questions[q] : 0));
+    r.values = [
+      index + 1,
+      row.studentName,
+      ...scores,
+      row.total,
+      row.participated ? row.percentage / 100 : null,
+      ...(showGrade ? [gradeFromPercentage(row.percentage, gradeThresholds)] : []),
+    ];
+    r.height = 20;
+    for (let c = 1; c <= totalCols; c++) {
+      const cell = r.getCell(c);
+      cell.font = { name: "Arial", size: 10, bold: c >= ballCol };
+      cell.alignment = { horizontal: c === 2 ? "left" : "center", vertical: "middle", indent: c === 2 ? 1 : 0 };
+      if (c === pctCol) cell.numFmt = "0%";
+    }
+  });
+
+  const firstSummaryRow = 8 + data.rows.length;
+  const summaryRows = [
+    ["O'rtacha ball", data.questionStats.map((s) => s.average), data.averageScore, data.averagePercentage === null ? null : data.averagePercentage / 100, null],
+    ["To'g'ri javob berganlar soni", data.questionStats.map((s) => (s.checkedCount ? s.correctCount : null)), null, null, null],
+    ["To'g'ri javob berganlarning ulushi", data.questionStats.map((s) => (s.share === null ? null : s.share / 100)), null, null, "0%"],
+  ];
+  summaryRows.forEach(([label, values, ball, pct, format], index) => {
+    const rowNum = firstSummaryRow + index;
+    const r = sheet.getRow(rowNum);
+    r.values = [label, "", ...values, ball, pct, ...(showGrade ? [null] : [])];
+    r.height = 22;
+    sheet.mergeCells(`A${rowNum}:B${rowNum}`);
+    for (let c = 1; c <= totalCols; c++) {
+      const cell = r.getCell(c);
+      cell.font = { name: "Arial", size: 10, bold: true };
+      cell.fill = grayFill;
+      cell.alignment = { horizontal: c <= 2 ? "left" : "center", vertical: "middle", indent: c <= 2 ? 1 : 0 };
+      if (format && c >= 3 && c < ballCol) cell.numFmt = format;
+      if (c === pctCol) cell.numFmt = "0%";
+    }
+  });
+
+  const lastTableRow = firstSummaryRow + summaryRows.length - 1;
+  applyTableBorders(sheet, 6, lastTableRow, 1, totalCols);
+
+  sheet.getColumn(1).width = 7;
+  sheet.getColumn(2).width = 36;
+  for (let c = 3; c < ballCol; c++) sheet.getColumn(c).width = 7;
+  sheet.getColumn(ballCol).width = 9;
+  sheet.getColumn(pctCol).width = 9;
+  if (showGrade) sheet.getColumn(pctCol + 1).width = 8;
+
+  addTeacherRow(sheet, lastTableRow + 2, totalCols, teacherName);
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const filename = safeFilename(`${report.className}_${report.subject}_ChSB-hisobot-${report.number}.xlsx`);
+  return { buffer, filename };
 }
