@@ -9,6 +9,8 @@ import StudentPercentageChart from "@/components/StudentPercentageChart";
 import { exportChSBToExcel } from "@/lib/excelExport";
 import { isResultEntered, summarizeAssessment } from "@/lib/resultStats";
 import SaveStatus from "@/components/SaveStatus";
+import TeacherSignature from "@/components/TeacherSignature";
+import { gradeFromPercentage, normalizeTableSettings, teacherFullName } from "@/lib/grades";
 import ResultTableToolbar, { matchesStudent, rowHighlightClass } from "@/components/ResultTableToolbar";
 import { useAuth } from "@/lib/authContext";
 import {
@@ -24,7 +26,9 @@ export default function ChSBResult() {
   const router = useRouter();
   const params = useParams();
   const assessmentId = params.id;
-  const { currentUser } = useAuth();
+  const { currentUser, userProfile } = useAuth();
+  const tableSettings = normalizeTableSettings(userProfile?.tableSettings);
+  const teacherName = teacherFullName(userProfile);
   
   const [assessment, setAssessment] = useState(null);
   const [results, setResults] = useState([]);
@@ -174,7 +178,11 @@ export default function ChSBResult() {
     setExporting(true);
     setExportError("");
     try {
-      await exportChSBToExcel(assessment, results, stats, schoolName);
+      await exportChSBToExcel(assessment, results, stats, schoolName, {
+        teacherName,
+        showGrade: tableSettings.showGrade,
+        gradeThresholds: tableSettings.gradeThresholds,
+      });
     } catch (e) {
       console.error("Excel export failed:", e);
       setExportError("Excel faylini yaratib bo'lmadi. Sahifani yangilab, qayta urinib ko'ring.");
@@ -325,6 +333,11 @@ export default function ChSBResult() {
                 <th className="px-3 py-2 border border-gray-300 text-center w-24 bg-gray-200">
                   %
                 </th>
+                {tableSettings.showGrade && (
+                  <th className="px-3 py-2 border border-gray-300 text-center w-20 bg-gray-200">
+                    Baho
+                  </th>
+                )}
               </tr>
             </thead>
 
@@ -343,6 +356,11 @@ export default function ChSBResult() {
                 <td className="px-3 py-2 border border-gray-300 text-center font-extrabold text-blue-900 bg-blue-100/50">
                   100%
                 </td>
+                {tableSettings.showGrade && (
+                  <td className="px-3 py-2 border border-gray-300 text-center font-extrabold text-blue-900 bg-blue-100/50">
+                    5
+                  </td>
+                )}
               </tr>
 
               {/* Dynamic Student Rows */}
@@ -385,6 +403,13 @@ export default function ChSBResult() {
                   <td className="px-3 py-2 border border-gray-300 text-center font-bold text-gray-900 bg-gray-50">
                     {isResultEntered(result, "ChSB") ? `${(Number(result.percentage) || 0).toFixed(1)}%` : "—"}
                   </td>
+                  {tableSettings.showGrade && (
+                    <td className="px-3 py-2 border border-gray-300 text-center font-extrabold text-gray-900 bg-gray-50">
+                      {isResultEntered(result, "ChSB")
+                        ? gradeFromPercentage(Number(result.percentage) || 0, tableSettings.gradeThresholds)
+                        : "—"}
+                    </td>
+                  )}
                 </tr>
                 );
               })}
@@ -403,11 +428,14 @@ export default function ChSBResult() {
                   <td className="px-3 py-2.5 border border-gray-300 text-center font-extrabold text-blue-800 bg-gray-200">
                     {stats.averagePercentage === null ? "—" : `${stats.averagePercentage}%`}
                   </td>
+                  {tableSettings.showGrade && <td className="border border-gray-300 bg-gray-200" />}
                 </tr>
               </tfoot>
             )}
           </table>
         </div>
+
+        <TeacherSignature name={teacherName} />
       </div>
 
       <SaveStatus saving={saving} saveError={saveError} onRetry={retryFailedSaves} />

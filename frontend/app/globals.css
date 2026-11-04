@@ -165,6 +165,37 @@ input[type="number"] {
     padding: 4px 6px !important;
   }
 
+  /* Wide question table: everything has to fit on one A4 width, nothing may be clipped */
+  .print-fit-wrap {
+    overflow: visible !important;
+    border: none !important;
+  }
+
+  .print-fit-table {
+    font-size: 8pt !important;
+  }
+
+  /* The summary rows belong at the end of the sheet, not at the bottom of every page */
+  .print-fit-table tfoot {
+    display: table-row-group !important;
+  }
+
+  .print-fit-table th,
+  .print-fit-table td {
+    min-width: 0 !important;
+    padding: 2px 3px !important;
+  }
+
+  .print-fit-table td:has(> button) {
+    padding: 0 !important;
+  }
+
+  .print-fit-table .student-name-cell {
+    max-width: none !important;
+    white-space: normal !important;
+    overflow: visible !important;
+  }
+
   input {
     border: none !important;
     background: transparent !important;
